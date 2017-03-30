@@ -7,6 +7,8 @@
 
 ## Input
   The program reads **.tif** files which can be exported from most microscopes. Images can either be in greyscale (**RAW mode**, one image per channel) or overlays (**RGB mode**, multiple channels in different colours or one image per channel). Due to the way that image colour data is stored the program can only separate **R**ed, **G**reen and **B**lue, so please don’t overlay in other colours as this will interfere with the analysis. This also means that overlaying a brightfield image in grey would prevent accurate analysis.
+  
+  This version of the software currently supports **one fish per image**.
 
   Use the “Select directory” button to choose the folder containing your images. QuantiFish will scan that folder, along with any subfolders if you have the “Include Subdirectories” option selected.
 
