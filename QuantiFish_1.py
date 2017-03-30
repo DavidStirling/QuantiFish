@@ -33,7 +33,7 @@ class CoreWindow:
         self.savestatus = False
         self.dirstatus = False
         self.master.wm_title("QuantiFish")
-        self.master.iconbitmap(resource_path('QFIconSml.ico'))
+        self.master.iconbitmap(resource_path('/resources/QFIconSml.ico'))
         self.master.resizable(width=False, height=False)
         self.master.grid_columnconfigure(1, minsize=100)
         self.master.grid_columnconfigure(2, weight=1, minsize=250)
@@ -49,7 +49,7 @@ class CoreWindow:
 
         # Top Bar
         self.header = tk.Frame()
-        self.img = ImageTk.PhotoImage(Image.open(resource_path("QFLogo.png")))
+        self.img = ImageTk.PhotoImage(Image.open(resource_path("/resources/QFLogo.png")))
         self.logo = tk.Label(self.header, image=self.img)
         self.logo.grid(column=1, row=1, rowspan=2, sticky=tk.W)
         self.title = tk.Label(self.header, text="QuantiFish",font=("Arial", 25), justify=tk.CENTER).grid(column=2, columnspan=1, row=1, sticky=tk.E+tk.W)
@@ -194,7 +194,7 @@ class CoreWindow:
         self.aboutwindow = tk.Toplevel()
         self.aboutwindow.title("About")
         self.aboutwindow.wm_attributes('-toolwindow', 1)
-        self.logoimg = ImageTk.PhotoImage(Image.open(resource_path("QFIconMid.png")))
+        self.logoimg = ImageTk.PhotoImage(Image.open(resource_path("/resources/QFIconMid.png")))
         self.logoimage = tk.Label(self.aboutwindow, image=self.logoimg)
         self.logoimage.grid(row=1, column=1, pady=(15,0))
         self.heading = tk.Label(self.aboutwindow, text="QuantiFish", font=("Arial", 18), justify=tk.CENTER).grid(column=1, row=2)
