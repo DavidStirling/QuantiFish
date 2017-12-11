@@ -2,7 +2,7 @@
 
   QuantiFish is a quantification program intended for measuring fluorescence in images of zebrafish, although use with images of other specimens is possible. To perform an analysis, specify the folder containing your images of interest, select which analysis settings you want, then choose a file to save the data to. When these parameters are set the “Run” button in the bottom right will become available to allow you to start the analysis.
   
-  ![Main Window](https://i.imgur.com/43NyYbJ.png "Main Window")
+  ![Main Window](https://i.imgur.com/6tfJ9lY.png "Main Window")
   
 ##  Compatibility
 	This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. The Mac edition uses shorthand button labels but is otherwise identical in function. Source code is freely available on GitHub. This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image, OpenCV and PIL libraries. Standalone Windows and Mac releases are bundled with these libraries to simplify installation.
@@ -47,7 +47,7 @@ In the current version, this is limited to metadata from Leica systems. When exp
 
 ## Previewing
 
-  ![Previewer Window](https://i.imgur.com/iSPDCu1.png "Previewer Window")
+  ![Previewer Window](https://i.imgur.com/uCHgQwA.png "Previewer Window")
 
 **Preview** – The preview function will ask you to choose an example image and will generate an overlay of which pixels would be detected by the script using the current settings. Positive pixels are coloured light blue for visibility and ideally should only be present in the areas you’d consider as stained. The preview will update as you change the threshold, but if you want to switch channels hit the “**Refresh**” button to update the analysis. The overlay can be toggled on and off to aid thresholding.
 
