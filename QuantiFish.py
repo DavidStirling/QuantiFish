@@ -1,7 +1,26 @@
+# QuantiFish - A tool for quantification of fluorescence in Zebrafish embryos.
+# Copyright(C) 2017 David Stirling
+
+"""This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>."""
+
+
 import tkinter as tk
 import tkinter.filedialog as tkfiledialog
 from PIL import Image
 from PIL import ImageTk
+from scipy import ndimage as ndi
+from skimage.feature import peak_local_max
 import os
 import csv
 from xml.dom import minidom
@@ -11,11 +30,11 @@ import threading
 
 
 # Global Variables
-version = "1.0"
+version = "1.1"
 directory = "Select a directory to process"
 savedir = "Select a location to save the output"
 colour = "Unknown" #By default we don't know which channel we're looking at.
-#__spec__ = None #Fix for a bug in Thonny
+firstrun = True #Do we need to write headers to the output file?
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory. 
@@ -65,9 +84,9 @@ class CoreWindow:
         self.currdir.config(state=tk.DISABLED)
         self.currdir.grid(column=2, row=2, sticky=tk.E + tk.W)
         global subdiron
-        subdiron = tk.StringVar()
-        subdiron.set("True")
-        self.subdircheck = tk.Checkbutton(master, text="Include Subdirectories", variable=subdiron, onvalue="True", offvalue="False", command=self.subtoggle)
+        subdiron = tk.BooleanVar()
+        subdiron.set(True)
+        self.subdircheck = tk.Checkbutton(master, text="Include Subdirectories", variable=subdiron, onvalue=True, offvalue=False, command=self.subtoggle)
         self.subdircheck.grid(column=2, row=3, sticky=tk.E)
 
         # Preview Button
@@ -79,8 +98,8 @@ class CoreWindow:
         mode = tk.StringVar()
         mode.set("RGB")
         global chandet
-        chandet = tk.StringVar()
-        chandet.set("True")
+        chandet = tk.BooleanVar()
+        chandet.set(True)
         self.modebox = tk.Frame(bd=2, relief=tk.GROOVE)
         self.modebox.grid(column=1, row=4, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
         self.modelabel = tk.Label(self.modebox, text="Image Type:").grid(column=1, row=1, sticky=tk.W)
@@ -88,7 +107,7 @@ class CoreWindow:
         self.RGB.grid(column=1, row=2, sticky=tk.W)
         self.RAW = tk.Radiobutton(self.modebox, text="Greyscale", variable=mode, value="RAW", command=lambda: self.checkmode())
         self.RAW.grid(column=1, row=3, sticky=tk.W)
-        self.detecttoggle = tk.Checkbutton(self.modebox, text="Detect Channels", variable=chandet, onvalue="True", offvalue="False", command=self.detchan)
+        self.detecttoggle = tk.Checkbutton(self.modebox, text="Detect Channels", variable=chandet, onvalue=True, offvalue=False, command=self.detchan)
         self.detecttoggle.grid(column=1, row=4, sticky=tk.W)
 
         # Threshold Selector
@@ -96,14 +115,14 @@ class CoreWindow:
         self.thrframe = tk.Frame(bd=2, relief=tk.GROOVE)
         threshold = tk.IntVar()
         threshold.set(60)
-        self.threslide = tk.Scale(self.thrframe, from_=0, to=256, tickinterval=64, variable=threshold, orient=tk.HORIZONTAL, label="Threshold (minimum intensity to count):", command=lambda x: self.regenpreview("nochange"))
+        self.threslide = tk.Scale(self.thrframe, from_=0, to=256, tickinterval=64, variable=threshold, orient=tk.HORIZONTAL, label="Threshold (minimum intensity to count):", command=lambda x: self.regenpreview("nochange", False))
         self.threslide.grid(column=2, row=4, rowspan=2, ipadx=150)
         self.setthr = tk.Entry(self.thrframe, textvariable=threshold, width=5, justify=tk.CENTER,)
-        self.setthr.bind("<Return>", lambda x: self.regenpreview("nochange"))
+        self.setthr.bind("<Return>", lambda x: self.regenpreview("nochange", False))
         self.setthr.grid(column=3, row=4, sticky=tk.S)
-        self.thron = tk.StringVar()
-        self.thron.set("True")
-        self.thrcheck = tk.Checkbutton(self.thrframe, text="Use Threshold", variable=self.thron, onvalue="True", offvalue="False", command=self.thrstatus)
+        self.thron = tk.BooleanVar()
+        self.thron.set(True)
+        self.thrcheck = tk.Checkbutton(self.thrframe, text="Apply\nThreshold", variable=self.thron, onvalue=True, offvalue=False, command=self.thrstatus)
         self.thrcheck.grid(column=3, row=5, sticky=tk.E)
         self.thrframe.grid(column=2, row=4, sticky=tk.W + tk.E + tk.N + tk.S, pady=5)
 
@@ -120,6 +139,32 @@ class CoreWindow:
         self.opt2.grid(column=1, row=3, sticky=tk.W)
         self.opt3 = tk.Radiobutton(self.colbox, text="Red", variable=desiredcolour, value=0,)
         self.opt3.grid(column=1, row=4, sticky=tk.W)
+
+        # Cluster Explain Text
+        self.clusterbox = tk.Frame(bd=2, relief=tk.GROOVE)
+        self.clusterbox.grid(column=1, row=5, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
+        self.cluslabel = tk.Label(self.clusterbox, text="Clustering Analysis:").grid(column=1, row=1, sticky=tk.W)
+        self.clusstatement = tk.Label(self.clusterbox, text="Search for large\nareas of staining").grid(column=1, row=2, sticky=tk.W+tk.E+tk.N+tk.S)
+        
+
+        # Cluster Selector
+        global minarea
+        global clusteron
+        self.clusframe = tk.Frame(bd=2, relief=tk.GROOVE)
+        minarea = tk.IntVar()
+        minarea.set(0)
+        self.areaslide = tk.Scale(self.clusframe, from_=0, to=1000, tickinterval=250, variable=minarea, orient=tk.HORIZONTAL, label="Minimum cluster size (pixels):", command=lambda x: self.regenpreview("nochange", False))
+        self.areaslide.grid(column=2, row=4, rowspan=2, ipadx=150)
+        self.setarea = tk.Entry(self.clusframe, textvariable=minarea, width=5, justify=tk.CENTER,)
+        self.setarea.bind("<Return>", lambda x: self.regenpreview("nochange", False))
+        self.setarea.grid(column=3, row=4, sticky=tk.S)
+        clusteron = tk.BooleanVar()
+        clusteron.set(False)
+        self.cluscheck = tk.Checkbutton(self.clusframe, text="Analyse\nClustering", variable=clusteron, onvalue=True, offvalue=False, command=self.cluststatus)
+        self.areaslide.config(state=tk.DISABLED)
+        self.setarea.config(state=tk.DISABLED)
+        self.cluscheck.grid(column=3, row=5, sticky=tk.E)
+        self.clusframe.grid(column=2, row=5, sticky=tk.W + tk.E + tk.N + tk.S, pady=5)
 
         # Save Selector
         self.saveselect = tk.Button(master, height=2, text="Select Output", command=self.savesel)
@@ -145,35 +190,38 @@ class CoreWindow:
         self.previewframe = tk.Frame(self.previewwindow) #Frame to aid holding and deleting preview images.
         self.previewpane = tk.Label(self.previewframe, image=outgoingimage)
         self.previewpane.image = outgoingimage
-        self.previewpane.grid(row=1, column=1,)
+        self.previewpane.grid(row=1, column=1, sticky=tk.E+tk.W)
         self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N+tk.S+tk.E+tk.W)
         self.previewbutton.grid_forget()
-        self.refreshpreviewbutton = tk.Button(self.master, height=2, text="Refresh", command=lambda: self.regenpreview("refresh"))
+        self.refreshpreviewbutton = tk.Button(self.master, height=2, text="Refresh", command=lambda: self.regenpreview("refresh", False))
         self.refreshpreviewbutton.grid(column=3, row=2, rowspan=2, sticky=tk.E + tk.W + tk.N, padx=5)
   
         self.previewcontrols = tk.Frame(self.previewwindow, bd=2, relief=tk.GROOVE) #Frame for preview controls.
-        self.previewcontrols.grid(column=1, columnspan=5, row=3, sticky=tk.E + tk.W + tk.N + tk.S, padx=5)
-        self.prevpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Previous\nFile", command=lambda: self.regenpreview("previous"))
-        self.prevpreviewbutton.grid(column=1, row=1, rowspan=2, sticky=tk.E, padx=(5,0), pady=5, ipadx=10)
+        self.previewcontrols.grid(column=1, columnspan=5, row=3, sticky=tk.E + tk.W + tk.N + tk.S)
+        self.prevpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Previous\nFile", command=lambda: self.regenpreview("previous", False))
+        self.prevpreviewbutton.grid(column=1, row=1, rowspan=2, sticky=tk.E, padx=(3,0), pady=5, ipadx=10)
         self.prevpreviewbutton.config(state=tk.DISABLED)
-        self.nextpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Next\nFile", command=lambda: self.regenpreview("next"))
-        self.nextpreviewbutton.grid(column=2, row=1, rowspan=2, sticky=tk.E, padx=(0, 5), pady=5, ipadx=10)
+        self.nextpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Next\nFile", command=lambda: self.regenpreview("next", False))
+        self.nextpreviewbutton.grid(column=2, row=1, rowspan=2, sticky=tk.E, padx=(0, 3), pady=5, ipadx=10)
         if self.dirstatus == False:
             self.nextpreviewbutton.config(state=tk.DISABLED)
-        self.changepreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Select\nFile", command=lambda: self.regenpreview("change"))
-        self.changepreviewbutton.grid(column=3, row=1, rowspan=2, sticky=tk.E + tk.W, padx=5, ipadx=10)
-        self.refresh = tk.Button(self.previewcontrols, height=2, text="Refresh", command=lambda: self.regenpreview("refresh")).grid(column=4, row=1, rowspan=2, sticky=tk.E, padx=5, pady=5, ipadx=10)
-        self.overlaytoggle = tk.Button(self.previewcontrols, height=2, text="Show\nOverlay", command= lambda:self.switchpreview(), relief=tk.SUNKEN)
-        self.overlaytoggle.grid(column=5, row=1, rowspan=2, padx=5, pady=5, ipadx=10)
+        self.changepreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Select\nFile", command=lambda: self.regenpreview("change", False))
+        self.changepreviewbutton.grid(column=3, row=1, rowspan=2, sticky=tk.E + tk.W, padx=3, ipadx=10)
+        self.refresh = tk.Button(self.previewcontrols, height=2, text="Refresh", command=lambda: self.regenpreview("refresh", False)).grid(column=4, row=1, rowspan=2, sticky=tk.E, padx=3, pady=5, ipadx=10)
+        self.overlaytoggle = tk.Button(self.previewcontrols, height=2, text="Show\nOverlay", command= lambda:self.switchpreview(False), relief=tk.SUNKEN)
+        self.overlaytoggle.grid(column=5, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
+        self.clustertoggle = tk.Button(self.previewcontrols, height=2, text="Find\nClusters", command= lambda:self.switchpreview(True))
+        self.clustertoggle.grid(column=6, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
+
         self.overlaysave = tk.Button(self.previewcontrols, height=2, text="Save\nOverlay", command= lambda:self.savepreview())
-        self.overlaysave.grid(column=6, row=1, rowspan=2, sticky=tk.W, padx=5, pady=5, ipadx=10)
-        self.autothresh = tk.Button(self.previewcontrols, height=2, width=5, text="Auto\nThreshold", command=lambda: self.autothreshold()).grid(column=7, row=1, rowspan=2, sticky=tk.E, padx=5, pady=5, ipadx=15)
+        self.overlaysave.grid(column=7, row=1, rowspan=2, sticky=tk.W, padx=3, pady=5, ipadx=10)
+        self.autothresh = tk.Button(self.previewcontrols, height=2, width=5, text="Auto\nThreshold", command=lambda: self.autothreshold()).grid(column=8, row=1, rowspan=2, sticky=tk.E, padx=5, pady=5, ipadx=15)
         self.pospixelbox = tk.Frame(self.previewcontrols, height=5, bd=2, relief=tk.RIDGE)
-        self.poscountlabel = tk.Label(self.pospixelbox, text = "Positive Pixels:").grid(column=1, row=1, sticky=tk.W+tk.E, padx=(5,0))
+        self.poscountlabel = tk.Label(self.pospixelbox, text = "Positive Pixels:").grid(column=1, row=1, sticky=tk.W+tk.E, padx=(3,0))
         self.poscount = tk.Label(self.pospixelbox, textvariable = pospixels)
         self.poscount.grid(column=1, row=2, sticky=tk.W+tk.E,)
-        self.pospixelbox.grid(column=8, row=1, rowspan=2, sticky=tk.W, padx=(5,0))
-        self.previewexplain = tk.Label(self.previewwindow, text="Light blue pixels represent areas which will be counted as positive \n Use AutoThreshold on a negative control or set threshold manually to remove autofluorescence.").grid(column=1, row=4, columnspan=5)
+        self.pospixelbox.grid(column=9, row=1, rowspan=2, sticky=tk.W, padx=(5,0))
+        self.previewexplain = tk.Label(self.previewwindow, text="Light blue pixels represent areas which will be counted as positive.\n Clicking \"Find Clusters\" will mark detected areas in a darker blue. \n Use AutoThreshold on a negative control or set threshold manually to remove autofluorescence.").grid(column=1, row=4, columnspan=5)
         self.previewwindow.protocol("WM_DELETE_WINDOW", self.closepreview)
         self.previewwindow.focus_set()
         self.previewwindow.update_idletasks()
@@ -234,17 +282,36 @@ class CoreWindow:
         self.logbox.insert(tk.END, str(text))
         self.logbox.see(tk.END)
 
-    # Detech threshold status and disable widgets if it's off.
+    # Detect threshold status and disable widgets if it's off.
     def thrstatus(self):
-        if (self.thron.get()) == "True":
+        if (self.thron.get()) == True:
             self.logevent("Threshold Enabled")
             self.threslide.config(state=tk.NORMAL)
             self.setthr.config(state=tk.NORMAL)
-        elif (self.thron.get()) == "False":
+        elif (self.thron.get()) == False:
             self.logevent("Threshold Disabled")
             self.threslide.config(state=tk.DISABLED)
             self.setthr.config(state=tk.DISABLED)
             threshold.set(0)
+
+    # Detect clustering status and disable widgets if it's off.
+    def cluststatus(self):
+        global firstrun
+        if clusteron.get() == True:
+            self.logevent("Cluster Analysis Enabled")
+            self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
+            self.areaslide.config(state=tk.NORMAL)
+            self.setarea.config(state=tk.NORMAL)
+            minarea.set(10)
+            firstrun = True
+        elif clusteron.get() == False:
+            self.logevent("Cluster Analysis Disabled")
+            self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
+            self.areaslide.config(state=tk.DISABLED)
+            self.setarea.config(state=tk.DISABLED)
+            minarea.set(0)
+            firstrun = True
+
 
     # Prompt user to select directory.
     def directselect(self):
@@ -268,6 +335,7 @@ class CoreWindow:
     #Prompt user for output file.  
     def savesel(self):
         global savedir
+        global firstrun
         try:
             savedir = tkfiledialog.asksaveasfile(mode='w', defaultextension='.csv', initialfile='output.csv',
                                              title='Save output file')
@@ -278,10 +346,7 @@ class CoreWindow:
             self.savefile.config(state=tk.DISABLED)
             self.logevent("Data will save in: " + str(self.friendlysavename))
             self.savestatus = True
-            try:
-                self.headers()
-            except:
-                self.logevent("Unable to write to output file")
+            firstrun = True
             if self.dirstatus and self.savestatus == True:
                 self.runbutton.config(state=tk.NORMAL, text="Run", bg="#99e699")
             else:
@@ -291,14 +356,14 @@ class CoreWindow:
 
     # Toggle inclusion of subdirectories
     def subtoggle(self):
-        if subdiron.get() == "True":
+        if subdiron.get() == True:
             self.logevent("Will process images in subdirectories")
         else:
             self.logevent("Will skip images in subdirectories")
 
     # Explain to user whether they're going to detect channels.
     def detchan(self):
-        if chandet.get() == "True":
+        if chandet.get() == True:
             self.logevent("Will search for Leica metadata to identify colours and then only process images from the selected channel")
         else:
             self.logevent("Will analyse all files, you'll need to determine which images in the output are your desired channel")
@@ -320,7 +385,7 @@ class CoreWindow:
             return
         self.logevent("Opening preview")
         try:
-            self.genpreview(self.previewfile, value)
+            self.genpreview(self.previewfile, value, False)
             self.preview_window(self.preview)
             if self.imagetypefail==True:
                 self.previewframe.destroy()
@@ -333,7 +398,7 @@ class CoreWindow:
             self.logevent("Failed to generate preview, sorry!")
 
     # Thresholded Preview Generator
-    def genpreview(self, tgt, value):
+    def genpreview(self, tgt, value, wantclusters):
         global maxvalue
         activemode = mode.get()
         thold = threshold.get()
@@ -353,7 +418,17 @@ class CoreWindow:
             nooverlay = Image.fromarray(imfile, 'RGB')
             mask = (imfile[:,:,value] > thold)
             pospixels.set(np.count_nonzero(mask))
+            if wantclusters == True:
+                threshtemp = imfile.copy()
+                tmask2 = (imfile[:,:,value] < thold)
+                threshtemp[tmask2] = (0, 0, 0)
+                simpleclusters, numclusters = ndi.measurements.label(threshtemp)
+                areacounts = np.unique(simpleclusters, return_counts=True)
+                positivegroups = areacounts[0][1:][areacounts[1][1:] > minarea.get()]
+                clustermask = np.isin(simpleclusters[:,:,1],positivegroups)
             imfile[mask] = (0, 191, 255)
+            if wantclusters == True:
+                imfile[clustermask] = (0, 75, 255)
             self.preview2 = Image.fromarray(imfile, 'RGB')
             self.preview = self.preview2.resize((self.preview2.size[0] // 2, self.preview2.size[1] // 2))
             self.nooverlay = nooverlay.resize((nooverlay.size[0] // 2, nooverlay.size[1] // 2))
@@ -363,16 +438,26 @@ class CoreWindow:
             nooverlay = Image.fromarray(im, 'RGB')
             mask = (im[:,:,1] > thold//256)
             pospixels.set(np.count_nonzero(mask))
+            if wantclusters == True:
+                threshtemp = imfile.copy()
+                tmask2 = (imfile[:,:] < thold)
+                threshtemp[tmask2] = (0)
+                simpleclusters, numclusters = ndi.measurements.label(threshtemp)
+                areacounts = np.unique(simpleclusters, return_counts=True)
+                positivegroups = areacounts[0][1:][areacounts[1][1:] > minarea.get()]
+                clustermask = np.isin(simpleclusters[:,:],positivegroups)
             im[mask] = (0, 191, 255)
+            if wantclusters == True:
+                im[clustermask] = (0, 75, 255)
             self.preview2 = Image.fromarray(im, 'RGB')
             self.preview = self.preview2.resize((self.preview2.size[0] // 2, self.preview2.size[1] // 2))
             self.nooverlay = nooverlay.resize((nooverlay.size[0] // 2, nooverlay.size[1] // 2))
         self.nooverlay = ImageTk.PhotoImage(self.nooverlay)
         self.preview = ImageTk.PhotoImage(self.preview)
         self.displayed = "overlay"
-
+   
     # Regenerate preview, reset window if the source image is changing.
-    def regenpreview(self, mode):
+    def regenpreview(self, mode, wantclusters):
         try:
             if self.previewwindow.winfo_exists() == 0:
                 return
@@ -382,6 +467,20 @@ class CoreWindow:
             self.previewframe.destroy()
             self.previewframe = tk.Frame(self.previewwindow)
             self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N+tk.S+tk.E+tk.W)
+        elif mode == "cluster":
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N+tk.S+tk.E+tk.W)
+            try:
+                self.genpreview(self.previewfile, desiredcolour.get(), True)
+                self.previewpane = tk.Label(self.previewframe, image=self.preview)
+                self.previewpane.image = self.preview
+                self.previewpane.grid(row=1, column=1, sticky=tk.E+tk.W)
+            except:
+                self.logevent("Error generating preview file")
+            self.overlaytoggle.config(relief=tk.SUNKEN)
+            self.displayed = "clusters"
+            return
         elif mode == "change":
             self.previewframe.destroy()
             self.previewframe = tk.Frame(self.previewwindow, height=500)
@@ -438,15 +537,16 @@ class CoreWindow:
             self.previewtitle.destroy()
             self.previewtitle = tk.Label(self.previewwindow, text=("..." + self.previewfile[-100:]))
             self.previewtitle.grid(row=1, column=1, columnspan=5)
+        
         try:
-            self.genpreview(self.previewfile, desiredcolour.get())
+            self.genpreview(self.previewfile, desiredcolour.get(), False)
         except:
             self.logevent("Error generating preview file")
             return
         if self.imagetypefail==False: #Only show preview if the image is the right type.
             self.previewpane = tk.Label(self.previewframe, image=self.preview)
             self.previewpane.image = self.preview
-            self.previewpane.grid(row=1, column=1)
+            self.previewpane.grid(row=1, column=1, sticky=tk.E+tk.W)
         else:
             self.previewframe.destroy()
             self.previewframe = tk.Frame(self.previewwindow)
@@ -461,27 +561,46 @@ class CoreWindow:
     def autothreshold(self):
         try:
             threshold.set(maxvalue+1)
-            self.regenpreview("nochange")
+            self.regenpreview("nochange", False)
         except:
             pass
 
     # Switch between overlay and original image in preview
-    def switchpreview(self):
+    def switchpreview(self, cluster):
         if self.imagetypefail==True:
             return
-        if self.displayed == "overlay":
-            self.previewpane.grid_forget()
-            self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
-            self.previewpane2.image = self.nooverlay
-            self.previewpane2.grid(row=1, column=1)
-            self.overlaytoggle.config(relief=tk.RAISED)
-            self.displayed = "original"
-        elif self.displayed == "original":
-            self.previewpane2.grid_forget()
-            self.previewpane.grid(row=1, column=1)
-            self.overlaytoggle.config(relief=tk.SUNKEN)
-            self.displayed = "overlay"
-
+        if cluster==False:
+            if self.displayed == "overlay":
+                self.previewpane.grid_forget()
+                self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
+                self.previewpane2.image = self.nooverlay
+                self.previewpane2.grid(row=1, column=1, sticky=tk.E+tk.W)
+                self.overlaytoggle.config(relief=tk.RAISED)
+                self.displayed = "original"
+            elif self.displayed == "original":
+                self.previewpane2.grid_forget()
+                self.previewpane.grid(row=1, column=1, sticky=tk.E+tk.W)
+                self.overlaytoggle.config(relief=tk.SUNKEN)
+                self.displayed = "overlay"
+            elif self.displayed == "clusters":
+                self.previewpane.grid_forget()
+                self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
+                self.previewpane2.image = self.nooverlay
+                self.previewpane2.grid(row=1, column=1, sticky=tk.E+tk.W)
+                self.overlaytoggle.config(relief=tk.RAISED)
+                self.displayed = "original"            
+        else:
+            if self.displayed == "clusters":
+                self.previewpane.grid_forget()
+                self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
+                self.previewpane2.image = self.nooverlay
+                self.previewpane2.grid(row=1, column=1, sticky=tk.E+tk.W)
+                self.overlaytoggle.config(relief=tk.RAISED)
+                self.displayed = "original"
+            else:
+                self.regenpreview("cluster", True)
+                self.overlaytoggle.config(relief=tk.SUNKEN)
+        
     # Save the preview.
     def savepreview(self):
         try:
@@ -495,7 +614,10 @@ class CoreWindow:
 
     # Writes headers in output file
     def headers(self):
-        self.headings = ('File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Threshold', 'Channel')
+        if clusteron.get() == True:
+            self.headings = ('File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Total Clusters', 'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters', 'Positive Pixels in Large Clusters', 'Threshold', 'Channel' )
+        else:
+            self.headings = ('File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Threshold', 'Channel')
         try:
             with open(savedir.name, 'w', newline="\n", encoding="utf-8") as f:
                 self.writer = csv.writer(f)
@@ -518,6 +640,7 @@ class CoreWindow:
     # Script Starter
     def runscript(self):
         global mpro
+        global firstrun
         #Disable everything
         self.dirselect.config(state=tk.DISABLED)
         self.subdircheck.config(state=tk.DISABLED)
@@ -531,7 +654,16 @@ class CoreWindow:
         self.thrcheck.config(state=tk.DISABLED)
         self.setthr.config(state=tk.DISABLED)
         self.threslide.config(state=tk.DISABLED)
+        self.cluscheck.config(state=tk.DISABLED)
+        self.areaslide.config(state=tk.DISABLED)
+        self.setarea.config(state=tk.DISABLED)
         self.runbutton.config(text="Stop", bg="#ff4d4d", command=self.abort)
+        if firstrun == True:
+            try:
+                self.headers()
+                firstrun = False
+            except:
+                self.logevent("Unable to write to output file")
         try: #Setup thread for analysis to run in
             global mprokilla
             mprokilla = threading.Event()
@@ -551,7 +683,11 @@ class CoreWindow:
             app.opt3.config(state=tk.NORMAL)
             app.saveselect.config(state=tk.NORMAL)
             app.thrcheck.config(state=tk.NORMAL)
-            if app.thron.get() == "True":
+            app.cluscheck.config(state=tk.NORMAL)
+            if clusteron.get() == True:
+                app.areaslide.config(state=tk.NORMAL)
+                app.setarea.config(state=tk.NORMAL)
+            if app.thron.get() == True:
                 app.setthr.config(state=tk.NORMAL)
                 app.threslide.config(state=tk.NORMAL)
             return
@@ -573,7 +709,11 @@ class CoreWindow:
             app.opt3.config(state=tk.NORMAL)
             app.saveselect.config(state=tk.NORMAL)
             app.thrcheck.config(state=tk.NORMAL)
-            if app.thron.get() == "True":
+            app.cluscheck.config(state=tk.NORMAL)
+            if clusteron.get() == True:
+                app.areaslide.config(state=tk.NORMAL)
+                app.setarea.config(state=tk.NORMAL)
+            if app.thron.get() == True:
                 app.setthr.config(state=tk.NORMAL)
                 app.threslide.config(state=tk.NORMAL)
         except:
@@ -587,7 +727,7 @@ def findmeta():
     greenid = "Unknown"
     blueid = "Unknown"
     redid = "Unknown"
-    if chandet.get() == "False":
+    if chandet.get() == False:
         colour="Unknown"
         return False
     for root, dirs, files in os.walk(directory):
@@ -635,9 +775,9 @@ def findmeta():
 
 #File List Generator
 def genfilelist(tgtdirectory, subdirectories):
-    if subdirectories == "False":
+    if subdirectories == False:
         return [os.path.normpath(os.path.join(root,f)) for root,dirs,files in os.walk(tgtdirectory) for f in files if f.endswith(".tif") and root == tgtdirectory]
-    elif subdirectories == "True":
+    elif subdirectories == True:
         return [os.path.normpath(os.path.join(root,f)) for root,dirs,files in os.walk(tgtdirectory) for f in files if f.endswith(".tif")]
 
 # Master File Cycler
@@ -655,7 +795,7 @@ def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desire
                 else:
                     try:
                         
-                        results = genstats(data, desiredcolourid, activemode, thresh)
+                        results = genstats(data, desiredcolourid, activemode, thresh, clusteron.get())
                         app.datawriter(file, results)
                     except:
                         app.logevent("Analysis failed, image may be corrupted")
@@ -671,11 +811,11 @@ def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desire
                     elif activemode == "RAW" and data.dtype == "uint8":
                         app.logevent("Not a RAW image, analysis skipped")
                     else:
-                        try:
-                            results = genstats(data, desiredcolourid, activemode, thresh)
-                            app.datawriter(file, results)
-                        except:
-                            app.logevent("Analysis failed, image may be corrupted")
+                        #try:
+                        results = genstats(data, desiredcolourid, activemode, thresh, clusteron.get())
+                        app.datawriter(file, results)
+                        #except:
+                        #    app.logevent("Analysis failed, image may be corrupted")
                 else:
                     pass
     app.logevent("Script Complete!")
@@ -689,14 +829,18 @@ def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desire
     app.opt3.config(state=tk.NORMAL)
     app.saveselect.config(state=tk.NORMAL)
     app.thrcheck.config(state=tk.NORMAL)
-    if app.thron.get() == "True":
+    app.cluscheck.config(state=tk.NORMAL)
+    if clusteron.get() == True:
+        app.areaslide.config(state=tk.NORMAL)
+        app.setarea.config(state=tk.NORMAL)
+    if app.thron.get() == True:
         app.setthr.config(state=tk.NORMAL)
         app.threslide.config(state=tk.NORMAL)
     app.runbutton.config(text="Run", bg="#99e699", command=app.runscript)
     savedir.close()
 
 # Data generators
-def genstats(input, x, mode2, th):
+def genstats(input, x, mode2, th, wantclusters):
     if mode2 == "RGB":
         input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
         max = np.amax(input[:,:,x])
@@ -708,16 +852,63 @@ def genstats(input, x, mode2, th):
             input[mask] = (0, 0, 0, 255)
         intint = np.sum(input[:,:,x])
         count = np.count_nonzero(input[:,:,x])
-        return (intint, count, max, min)
-    elif mode2 == "RAW":
-        max = np.amax(input[:,:])
-        min = np.amin(input[:,:])
-        mask = (input[:,:] < th)
-        input[mask] = (0)
-        intint = np.sum(input[:,:])
-        count = np.count_nonzero(input[:,:])
+        if wantclusters == True:
+            numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil = getclusters(input, th, mode2, x, minarea.get())
+            return (intint, count, max, min, numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil)
         return (intint, count, max, min)
 
+    elif mode2 == "RAW":
+        max = np.amax(input)
+        min = np.amin(input)
+        mask = (input < th)
+        input[mask] = (0)
+        intint = np.sum(input)
+        count = np.count_nonzero(input)
+        if wantclusters == True:
+            numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil = getclusters(input, th, mode2, x, minarea.get())
+            return (intint, count, max, min, numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil)
+        return (intint, count, max, min)
+        
+## Cluster Analysis
+def getclusters(trgtimg, thresh, mode2, x, minimumarea):
+    #Find and count peaks above threshold, assign labels to clusters of stainng.
+    if mode2 == "RGB":
+        localmax = peak_local_max(trgtimg[:,:,x], indices=False, threshold_abs = thresh)
+        peaks, numpeaks = ndi.measurements.label(localmax)
+        simpleclusters, numclusters = ndi.measurements.label(trgtimg[:,:,x])
+        # Create table of cluster ids vs size of each, then list clusters bigger than minsize
+        areacounts = np.unique(simpleclusters, return_counts=True)
+        positivegroups = areacounts[0][1:][areacounts[1][1:] > minimumarea]
+        #Mask for only positive clusters, find clusters which are in the list of clusters, count them.
+        clustermask = np.isin(simpleclusters,positivegroups)
+        targetclusters = np.sum(areacounts[1][1:] > minimumarea)
+        #Clone the image then remove any staining in negative clusters. Quantifies staining in positive clusters.
+        filthresholded = trgtimg.copy()
+        try:
+            filthresholded[np.invert(clustermask)] = (0, 0, 0)
+        except:
+            filthresholded[np.invert(clustermask)] = (0, 0, 0, 255)
+        intintfil = np.sum(filthresholded[:,:,x])
+        countfil = np.count_nonzero(filthresholded[:,:,x])
+        localmax2 = peak_local_max(filthresholded[:,:,x], indices=False, threshold_abs = thresh)
+    else:
+        localmax = peak_local_max(trgtimg, indices=False, threshold_abs = thresh)
+        peaks, numpeaks = ndi.measurements.label(localmax)
+        simpleclusters, numclusters = ndi.measurements.label(trgtimg)
+        # Create table of cluster ids vs size of each, then list clusters bigger than minsize
+        areacounts = np.unique(simpleclusters, return_counts=True)
+        positivegroups = areacounts[0][1:][areacounts[1][1:] > minimumarea]
+        #Mask for only positive clusters, find clusters which are in the list of clusters, count them.
+        clustermask = np.isin(simpleclusters,positivegroups)
+        targetclusters = np.sum(areacounts[1][1:] > minimumarea)
+        #Clone the image then remove any staining in negative clusters. Quantifies staining in positive clusters.
+        filthresholded = trgtimg.copy()
+        filthresholded[np.invert(clustermask)] = (0)
+        intintfil = np.sum(filthresholded)
+        countfil = np.count_nonzero(filthresholded)
+        localmax2 = peak_local_max(filthresholded[:,:], indices=False, threshold_abs = thresh)
+    targetpeaks, numtargetpeaks = ndi.measurements.label(localmax2)
+    return(numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil)
 
 # UI Initialiser
 def main():
