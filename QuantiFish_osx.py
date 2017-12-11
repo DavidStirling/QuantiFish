@@ -68,7 +68,7 @@ class CoreWindow:
 
         # Top Bar
         self.header = tk.Frame()
-        self.img = ImageTk.PhotoImage(Image.open(resource_path("QFLogo.png")))
+        self.img = ImageTk.PhotoImage(Image.open(resource_path("QFLogo.gif")))
         self.logo = tk.Label(self.header, image=self.img)
         self.logo.grid(column=1, row=1, rowspan=2, sticky=tk.W)
         self.title = tk.Label(self.header, text="QuantiFish",font=("Arial", 25), justify=tk.CENTER).grid(column=2, columnspan=1, row=1, sticky=tk.E+tk.W)
@@ -183,7 +183,6 @@ class CoreWindow:
         x += self.master.winfo_width()
         self.previewwindow = tk.Toplevel()
         self.previewwindow.title("Previewer")
-        self.previewwindow.wm_attributes('-toolwindow', 1)
         self.previewtitle = tk.Label(self.previewwindow, text=("..." + self.previewfile[-100:]))
         self.previewtitle.grid(row=1, column=1, columnspan=5)
 
@@ -198,24 +197,24 @@ class CoreWindow:
   
         self.previewcontrols = tk.Frame(self.previewwindow, bd=2, relief=tk.GROOVE) #Frame for preview controls.
         self.previewcontrols.grid(column=1, columnspan=5, row=3, sticky=tk.E + tk.W + tk.N + tk.S)
-        self.prevpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Previous\nFile", command=lambda: self.regenpreview("previous", False))
+        self.prevpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Previous", command=lambda: self.regenpreview("previous", False))
         self.prevpreviewbutton.grid(column=1, row=1, rowspan=2, sticky=tk.E, padx=(3,0), pady=5, ipadx=10)
         self.prevpreviewbutton.config(state=tk.DISABLED)
-        self.nextpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Next\nFile", command=lambda: self.regenpreview("next", False))
+        self.nextpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Next", command=lambda: self.regenpreview("next", False))
         self.nextpreviewbutton.grid(column=2, row=1, rowspan=2, sticky=tk.E, padx=(0, 3), pady=5, ipadx=10)
         if self.dirstatus == False:
             self.nextpreviewbutton.config(state=tk.DISABLED)
-        self.changepreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Select\nFile", command=lambda: self.regenpreview("change", False))
+        self.changepreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Choose", command=lambda: self.regenpreview("change", False))
         self.changepreviewbutton.grid(column=3, row=1, rowspan=2, sticky=tk.E + tk.W, padx=3, ipadx=10)
         self.refresh = tk.Button(self.previewcontrols, height=2, text="Refresh", command=lambda: self.regenpreview("refresh", False)).grid(column=4, row=1, rowspan=2, sticky=tk.E, padx=3, pady=5, ipadx=10)
-        self.overlaytoggle = tk.Button(self.previewcontrols, height=2, text="Show\nOverlay", command= lambda:self.switchpreview(False), relief=tk.SUNKEN)
+        self.overlaytoggle = tk.Button(self.previewcontrols, height=2, text="Overlay", command= lambda:self.switchpreview(False), relief=tk.SUNKEN)
         self.overlaytoggle.grid(column=5, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
-        self.clustertoggle = tk.Button(self.previewcontrols, height=2, text="Find\nClusters", command= lambda:self.switchpreview(True))
+        self.clustertoggle = tk.Button(self.previewcontrols, height=2, text="Clusters", command= lambda:self.switchpreview(True))
         self.clustertoggle.grid(column=6, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
 
-        self.overlaysave = tk.Button(self.previewcontrols, height=2, text="Save\nOverlay", command= lambda:self.savepreview())
+        self.overlaysave = tk.Button(self.previewcontrols, height=2, text="Save", command= lambda:self.savepreview())
         self.overlaysave.grid(column=7, row=1, rowspan=2, sticky=tk.W, padx=3, pady=5, ipadx=10)
-        self.autothresh = tk.Button(self.previewcontrols, height=2, width=5, text="Auto\nThreshold", command=lambda: self.autothreshold()).grid(column=8, row=1, rowspan=2, sticky=tk.E, padx=5, pady=5, ipadx=15)
+        self.autothresh = tk.Button(self.previewcontrols, height=2, width=5, text="Auto", command=lambda: self.autothreshold()).grid(column=8, row=1, rowspan=2, sticky=tk.E, padx=5, pady=5, ipadx=15)
         self.pospixelbox = tk.Frame(self.previewcontrols, height=5, bd=2, relief=tk.RIDGE)
         self.poscountlabel = tk.Label(self.pospixelbox, text = "Positive Pixels:").grid(column=1, row=1, sticky=tk.W+tk.E, padx=(3,0))
         self.poscount = tk.Label(self.pospixelbox, textvariable = pospixels)
@@ -241,8 +240,7 @@ class CoreWindow:
         x += self.master.winfo_width()
         self.aboutwindow = tk.Toplevel()
         self.aboutwindow.title("About")
-        self.aboutwindow.wm_attributes('-toolwindow', 1)
-        self.logoimg = ImageTk.PhotoImage(Image.open(resource_path("QFIconMid.png")))
+        self.logoimg = ImageTk.PhotoImage(Image.open(resource_path("QFIconMid.gif")))
         self.logoimage = tk.Label(self.aboutwindow, image=self.logoimg)
         self.logoimage.grid(row=1, column=1, pady=(15,0))
         self.heading = tk.Label(self.aboutwindow, text="QuantiFish", font=("Arial", 18), justify=tk.CENTER).grid(column=1, row=2)
@@ -600,7 +598,7 @@ class CoreWindow:
             else:
                 self.regenpreview("cluster", True)
                 self.overlaytoggle.config(relief=tk.SUNKEN)
-        
+
     # Save the preview.
     def savepreview(self):
         try:

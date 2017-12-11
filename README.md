@@ -2,7 +2,11 @@
 
   QuantiFish is a quantification program intended for measuring fluorescence in images of zebrafish, although use with images of other specimens is possible. To perform an analysis, specify the folder containing your images of interest, select which analysis settings you want, then choose a file to save the data to. When these parameters are set the “Run” button in the bottom right will become available to allow you to start the analysis.
   
-  ![Main Window](http://i.imgur.com/1Jn2aHd.png "Main Window")
+  ![Main Window](https://i.imgur.com/6tfJ9lY.png "Main Window")
+  
+##  Compatibility
+  This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. The Mac edition uses shorthand button labels but is otherwise identical in function. Source code is freely available on GitHub. This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image, OpenCV and PIL libraries. Standalone Windows and Mac releases are bundled with these libraries to simplify installation.
+
   
 
 ## Input
@@ -25,6 +29,11 @@
 6.	Threshold – The threshold used for the analysis. Pixels below this number are ignored. This is used to remove background.
 7.	Channel – The colour of the image being analysed, if using the “Detect channels” feature.
 
+Additional data types when using cluster detection mode:
+
+8.  Clusters – Areas of continuous fluorescence above the detection threshold. 
+9.  Peaks – Individual points of high fluorescence. For the detection of multiple fluorescent objects in close proximity. A single cluster can be made up of multiple peaks.
+
   The results file should be locked for editing while the program is open, so please don’t try to modify it while the analysis is running. Multiple runs during the same session will be logged to the same file, although if you close the program and re-open it the program will clear pre-existing data should you try to select the same file.
 
 ## Settings
@@ -38,15 +47,21 @@ In the current version, this is limited to metadata from Leica systems. When exp
 
 **Quantifying** – This allows you to select which colour you’re looking to analyse. When multiple channels are present the software will pull out the correct colour and quantify signal on that channel. If “Detect Channels” mode is off while using Greyscale mode, this setting becomes irrelevant as the script will analyse all images regardless of channel.
 
+**Clustering Analysis** – By turning on **“Analyse Clustering”** you can have the program search for large areas of staining above the threshold (e.g. granulomas). Use the sliding scale to set the minimum size of a single cluster and the **“Find Clusters”** button on the preview window to show detected regions in a darker blue. The clustering analysis adds additional measurements into the data log, and so will overwrite a logging file made with the setting off. Be sure to create a new output file when you change modes!
+
+There are several additional columns in the cluster analysis output. **“Clusters”** refers to continuous regions of staining, whereas **“Peaks”** attempts to determine if those regions consist of multiple smaller foci of staining in close proximity. A single cluster can be made up of multiple areas of staining packed together (peaks). “Large Clusters” refers to results from only within clusters larger than the minimum size specified previously.
+
+
 ## Previewing
 
-  ![Previewer Window](http://i.imgur.com/oALNkK8.png "Previewer Window")
+  ![Previewer Window](https://i.imgur.com/uCHgQwA.png "Previewer Window")
 
 **Preview** – The preview function will ask you to choose an example image and will generate an overlay of which pixels would be detected by the script using the current settings. Positive pixels are coloured light blue for visibility and ideally should only be present in the areas you’d consider as stained. The preview will update as you change the threshold, but if you want to switch channels hit the “**Refresh**” button to update the analysis. The overlay can be toggled on and off to aid thresholding.
 
 The **Auto Threshold** button will try to pick a threshold based on the highest value in the current preview image (ideally a negative control). This is useful for getting an estimate to start from, although there will be some variance between different images. This function will also not work properly if your microscope has damaged pixels which always read positive, which can happen as sensors age. A small number of stuck pixels should be consistent across all images and wouldn’t significantly impact results beyond a minor increase in background.
 
 If you’ve selected a working directory, the program will automatically open images from there for previewing. You can cycle between images in the target folder using the **Next/Previous** buttons, or you can manually select a preview image with the **Change** button – this can be from anywhere on your computer. You can also **save** a copy of the preview image overlay to aid presentation.
+
 
 ### Colour or Greyscale?
 It is better to import “RAW” data if possible, which will give you greyscale files. This provides a bigger range of possible brightness values for your image which will improve the resolution of your analysis. Readings from RAW data will generally be higher than from RGB images due to this different scale, so they’re not directly comparable. Some microscopes will only export RAW data in proprietary formats, and so this program has been designed to accommodate both RAW and RGB exports to ensure compatibility.
