@@ -7,7 +7,7 @@
 ##  Compatibility
   This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. The Mac edition uses shorthand button labels but is otherwise identical in function. Source code is freely available on GitHub. This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image, OpenCV and PIL libraries. Standalone Windows and Mac releases are bundled with these libraries to simplify installation.
 
-  
+## [Available for Download Here](https://github.com/DavidStirling/QuantiFish/releases/)
 
 ## Input
   The program reads **.tif** files which can be exported from most microscopes. Images can either be in greyscale (**RAW mode**, one image per channel) or overlays (**RGB mode**, multiple channels in different colours or one image per channel). Due to the way that image colour data is stored the program can only separate **R**ed, **G**reen and **B**lue, so please don’t overlay in other colours as this will interfere with the analysis. This also means that overlaying a brightfield image in grey would prevent accurate analysis.
