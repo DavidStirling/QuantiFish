@@ -28,6 +28,7 @@
 5.	Maximum – The highest value among the positive pixels.
 6.	Threshold – The threshold used for the analysis. Pixels below this number are ignored. This is used to remove background.
 7.	Channel – The colour of the image being analysed, if using the “Detect channels” feature.
+
 Additional data types when using cluster detection mode:
 8.  Clusters – Areas of continuous fluorescence above the detection threshold. 
 9.  Peaks – Individual points of high fluorescence. For the detection of multiple fluorescent objects in close proximity. A single cluster can be made up of multiple peaks.
