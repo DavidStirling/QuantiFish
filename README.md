@@ -5,7 +5,7 @@
   ![Main Window](https://i.imgur.com/6tfJ9lY.png "Main Window")
   
 ##  Compatibility
-	This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. The Mac edition uses shorthand button labels but is otherwise identical in function. Source code is freely available on GitHub. This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image, OpenCV and PIL libraries. Standalone Windows and Mac releases are bundled with these libraries to simplify installation.
+  This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. The Mac edition uses shorthand button labels but is otherwise identical in function. Source code is freely available on GitHub. This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image, OpenCV and PIL libraries. Standalone Windows and Mac releases are bundled with these libraries to simplify installation.
 
   
 
