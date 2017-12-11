@@ -30,6 +30,7 @@
 7.	Channel – The colour of the image being analysed, if using the “Detect channels” feature.
 
 Additional data types when using cluster detection mode:
+
 8.  Clusters – Areas of continuous fluorescence above the detection threshold. 
 9.  Peaks – Individual points of high fluorescence. For the detection of multiple fluorescent objects in close proximity. A single cluster can be made up of multiple peaks.
 
@@ -46,6 +47,11 @@ In the current version, this is limited to metadata from Leica systems. When exp
 
 **Quantifying** – This allows you to select which colour you’re looking to analyse. When multiple channels are present the software will pull out the correct colour and quantify signal on that channel. If “Detect Channels” mode is off while using Greyscale mode, this setting becomes irrelevant as the script will analyse all images regardless of channel.
 
+**Clustering Analysis** – By turning on **“Analyse Clustering”** you can have the program search for large areas of staining above the threshold (e.g. granulomas). Use the sliding scale to set the minimum size of a single cluster and the **“Find Clusters”** button on the preview window to show detected regions in a darker blue. The clustering analysis adds additional measurements into the data log, and so will overwrite a logging file made with the setting off. Be sure to create a new output file when you change modes!
+
+There are several additional columns in the cluster analysis output. **“Clusters”** refers to continuous regions of staining, whereas **“Peaks”** attempts to determine if those regions consist of multiple smaller foci of staining in close proximity. A single cluster can be made up of multiple areas of staining packed together (peaks). “Large Clusters” refers to results from only within clusters larger than the minimum size specified previously.
+
+
 ## Previewing
 
   ![Previewer Window](https://i.imgur.com/uCHgQwA.png "Previewer Window")
@@ -55,12 +61,6 @@ In the current version, this is limited to metadata from Leica systems. When exp
 The **Auto Threshold** button will try to pick a threshold based on the highest value in the current preview image (ideally a negative control). This is useful for getting an estimate to start from, although there will be some variance between different images. This function will also not work properly if your microscope has damaged pixels which always read positive, which can happen as sensors age. A small number of stuck pixels should be consistent across all images and wouldn’t significantly impact results beyond a minor increase in background.
 
 If you’ve selected a working directory, the program will automatically open images from there for previewing. You can cycle between images in the target folder using the **Next/Previous** buttons, or you can manually select a preview image with the **Change** button – this can be from anywhere on your computer. You can also **save** a copy of the preview image overlay to aid presentation.
-
-## Clustering
-
-**Clustering Analysis** – By turning on **“Analyse Clustering”** you can have the program search for large areas of staining above the threshold (e.g. granulomas). Use the sliding scale to set the minimum size of a single cluster and the **“Find Clusters”** button on the preview window to show detected regions in a darker blue. The clustering analysis adds additional measurements into the data log, and so will overwrite a logging file made with the setting off. Be sure to create a new output file when you change modes!
-
-There are several additional columns in the cluster analysis output. **“Clusters”** refers to continuous regions of staining, whereas **“Peaks”** attempts to determine if those regions consist of multiple smaller foci of staining in close proximity. A single cluster can be made up of multiple areas of staining packed together (peaks). “Large Clusters” refers to results from only within clusters larger than the minimum size specified previously.
 
 
 ### Colour or Greyscale?
