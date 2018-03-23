@@ -51,13 +51,16 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path + extension)
 
 
-
 # Core UI
 class CoreWindow:
     def __init__(self, master):
+        self.imagetypefail = None
         self.master = master
         self.savestatus = False
         self.dirstatus = False
+        self.about_window = None
+        self.previewwindow = None
+        self.previewer_contents = None
         self.master.wm_title("QuantiFish")
         self.master.iconbitmap(resource_path('resources/QFIcon'))
         self.master.resizable(width=False, height=False)
@@ -78,15 +81,15 @@ class CoreWindow:
         self.img = ImageTk.PhotoImage(Image.open(resource_path("resources/QFLogo")))
         self.logo = tk.Label(self.header, image=self.img)
         self.logo.grid(column=1, row=1, rowspan=2, sticky=tk.W)
-        self.title = tk.Label(self.header, text="QuantiFish", font=("Arial", 25), justify=tk.CENTER).grid(column=2,
-                                                                                                          columnspan=1,
-                                                                                                          row=1,
-                                                                                                          sticky=tk.E + tk.W)
+        self.title = tk.Label(self.header, text="QuantiFish", font=("Arial", 25),
+                              justify=tk.CENTER).grid(column=2, columnspan=1, row=1, sticky=tk.E + tk.W)
         self.subtitle = tk.Label(self.header, text="Zebrafish Image Analyser", font=("Arial", 10),
                                  justify=tk.CENTER).grid(column=2, columnspan=1, row=2, sticky=tk.E + tk.W)
         self.header.grid(column=1, row=1, columnspan=2, sticky=tk.W + tk.E + tk.N + tk.S)
-        self.about = tk.Button(master, height=1, text="About", command=self.about).grid(column=3, row=1, rowspan=1,
-                                                                                        sticky=tk.E + tk.W, padx=5)
+        self.about = tk.Button(master, height=1, text="About", command=self.about).grid(column=3, row=1,
+                                                                                        rowspan=1,
+                                                                                        sticky=tk.E + tk.W,
+                                                                                        padx=5)
 
         # Directory Selector
         self.dirselect = tk.Button(master, height=2, text="Select Directory", command=self.directselect)
@@ -105,6 +108,8 @@ class CoreWindow:
         # Preview Button
         self.previewbutton = tk.Button(master, height=2, text="Preview", command=self.openpreview)
         self.previewbutton.grid(column=3, row=2, rowspan=2, sticky=tk.E + tk.W, padx=5)
+        self.refreshpreviewbutton = tk.Button(self.master, height=2, text="Refresh",
+                                              command=lambda: self.previewer_contents.regenpreview("refresh"))
 
         # Mode Selector
         global mode
@@ -133,10 +138,10 @@ class CoreWindow:
         threshold.set(60)
         self.threslide = tk.Scale(self.thrframe, from_=0, to=256, tickinterval=64, variable=threshold,
                                   orient=tk.HORIZONTAL, label="Threshold (minimum intensity to count):",
-                                  command=lambda x: self.regenpreview("nochange", False))
+                                  command=lambda x: self.previewer_contents.regenpreview("nochange"))
         self.threslide.grid(column=2, row=4, rowspan=2, ipadx=150)
         self.setthr = tk.Entry(self.thrframe, textvariable=threshold, width=5, justify=tk.CENTER, )
-        self.setthr.bind("<Return>", lambda x: self.regenpreview("nochange", False))
+        self.setthr.bind("<Return>", lambda x: self.previewer_contents.regenpreview("nochange"))
         self.setthr.grid(column=3, row=4, sticky=tk.S)
         self.thron = tk.BooleanVar()
         self.thron.set(True)
@@ -163,8 +168,8 @@ class CoreWindow:
         self.clusterbox = tk.Frame(bd=2, relief=tk.GROOVE)
         self.clusterbox.grid(column=1, row=5, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
         self.cluslabel = tk.Label(self.clusterbox, text="Clustering Analysis:").grid(column=1, row=1, sticky=tk.W)
-        self.clusstatement = tk.Label(self.clusterbox, text="Search for large\nareas of staining").grid(column=1, row=2,
-                                                                                                        sticky=tk.W + tk.E + tk.N + tk.S)
+        self.clusstatement = tk.Label(self.clusterbox, text="Search for large\nareas of staining")
+        self.clusstatement.grid(column=1, row=2, sticky=tk.W + tk.E + tk.N + tk.S)
 
         # Cluster Selector
         global minarea
@@ -174,10 +179,10 @@ class CoreWindow:
         minarea.set(0)
         self.areaslide = tk.Scale(self.clusframe, from_=0, to=1000, tickinterval=250, variable=minarea,
                                   orient=tk.HORIZONTAL, label="Minimum cluster size (pixels):",
-                                  command=lambda x: self.regenpreview("nochange", False))
+                                  command=lambda x: self.previewer_contents.regenpreview("nochange"))
         self.areaslide.grid(column=2, row=4, rowspan=2, ipadx=150)
         self.setarea = tk.Entry(self.clusframe, textvariable=minarea, width=5, justify=tk.CENTER, )
-        self.setarea.bind("<Return>", lambda x: self.regenpreview("nochange", False))
+        self.setarea.bind("<Return>", lambda x: self.previewer_contents.regenpreview("nochange"))
         self.setarea.grid(column=3, row=4, sticky=tk.S)
         clusteron = tk.BooleanVar()
         clusteron.set(False)
@@ -199,74 +204,24 @@ class CoreWindow:
                                    state=tk.DISABLED)
         self.runbutton.grid(column=3, row=7, rowspan=2, sticky=tk.E + tk.W, padx=5)
 
-#TODO: Preview window as class
+    # TODO: Preview window as class
 
-    # Preview Window
+    def preview_update(self):
+        # trigger update if preview window exists.
+        return
+
     def preview_window(self, outgoingimage):
         x = self.master.winfo_rootx()
         y = self.master.winfo_rooty()
         x += self.master.winfo_width()
-        self.previewwindow = tk.Toplevel()
+        self.previewwindow = tk.Toplevel(self.master)
+        self.previewer_contents = PreviewWindow(self.previewwindow, outgoingimage)
         self.previewwindow.title("Previewer")
-        self.previewtitle = tk.Label(self.previewwindow, text=("..." + self.previewfile[-100:]))
-        self.previewtitle.grid(row=1, column=1, columnspan=5)
-
-        self.previewframe = tk.Frame(self.previewwindow)  # Frame to aid holding and deleting preview images.
-        self.previewpane = tk.Label(self.previewframe, image=outgoingimage)
-        self.previewpane.image = outgoingimage
-        self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-        self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-        self.previewbutton.grid_forget()
-        self.refreshpreviewbutton = tk.Button(self.master, height=2, text="Refresh",
-                                              command=lambda: self.regenpreview("refresh", False))
-        self.refreshpreviewbutton.grid(column=3, row=2, rowspan=2, sticky=tk.E + tk.W + tk.N, padx=5)
-
-        self.previewcontrols = tk.Frame(self.previewwindow, bd=2, relief=tk.GROOVE)  # Frame for preview controls.
-        self.previewcontrols.grid(column=1, columnspan=5, row=3, sticky=tk.E + tk.W + tk.N + tk.S)
-        self.prevpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Previous\nFile",
-                                           command=lambda: self.regenpreview("previous", False))
-        self.prevpreviewbutton.grid(column=1, row=1, rowspan=2, sticky=tk.E, padx=(3, 0), pady=5, ipadx=10)
-        self.prevpreviewbutton.config(state=tk.DISABLED)
-        self.nextpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Next\nFile",
-                                           command=lambda: self.regenpreview("next", False))
-        self.nextpreviewbutton.grid(column=2, row=1, rowspan=2, sticky=tk.E, padx=(0, 3), pady=5, ipadx=10)
-        if self.dirstatus == False:
-            self.nextpreviewbutton.config(state=tk.DISABLED)
-        self.changepreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Select\nFile",
-                                             command=lambda: self.regenpreview("change", False))
-        self.changepreviewbutton.grid(column=3, row=1, rowspan=2, sticky=tk.E + tk.W, padx=3, ipadx=10)
-        self.refresh = tk.Button(self.previewcontrols, height=2, text="Refresh",
-                                 command=lambda: self.regenpreview("refresh", False)).grid(column=4, row=1, rowspan=2,
-                                                                                           sticky=tk.E, padx=3, pady=5,
-                                                                                           ipadx=10)
-        self.overlaytoggle = tk.Button(self.previewcontrols, height=2, text="Show\nOverlay",
-                                       command=lambda: self.switchpreview(False), relief=tk.SUNKEN)
-        self.overlaytoggle.grid(column=5, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
-        self.clustertoggle = tk.Button(self.previewcontrols, height=2, text="Find\nClusters",
-                                       command=lambda: self.switchpreview(True))
-        self.clustertoggle.grid(column=6, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
-
-        self.overlaysave = tk.Button(self.previewcontrols, height=2, text="Save\nOverlay",
-                                     command=lambda: self.savepreview())
-        self.overlaysave.grid(column=7, row=1, rowspan=2, sticky=tk.W, padx=3, pady=5, ipadx=10)
-        self.autothresh = tk.Button(self.previewcontrols, height=2, width=5, text="Auto\nThreshold",
-                                    command=lambda: self.autothreshold()).grid(column=8, row=1, rowspan=2, sticky=tk.E,
-                                                                               padx=5, pady=5, ipadx=15)
-        self.pospixelbox = tk.Frame(self.previewcontrols, height=5, bd=2, relief=tk.RIDGE)
-        self.poscountlabel = tk.Label(self.pospixelbox, text="Positive Pixels:").grid(column=1, row=1,
-                                                                                      sticky=tk.W + tk.E, padx=(3, 0))
-        self.poscount = tk.Label(self.pospixelbox, textvariable=pospixels)
-        self.poscount.grid(column=1, row=2, sticky=tk.W + tk.E, )
-        self.pospixelbox.grid(column=9, row=1, rowspan=2, sticky=tk.W, padx=(5, 0))
-        self.previewexplain = tk.Label(self.previewwindow,
-                                       text="Light blue pixels represent areas which will be counted as positive.\n Clicking \"Find Clusters\" will mark detected areas in a darker blue. \n Use AutoThreshold on a negative control or set threshold manually to remove autofluorescence.").grid(
-            column=1, row=4, columnspan=5)
-        self.previewwindow.protocol("WM_DELETE_WINDOW", self.closepreview)
-        self.previewwindow.focus_set()
+        self.previewwindow.iconbitmap(resource_path('resources/QFIcon'))
         self.previewwindow.update_idletasks()
-        self.previewwindow.wm_attributes("-topmost", True)
-        self.previewwindow.geometry(
-            '%dx%d+%d+%d' % (self.previewwindow.winfo_width(), self.previewwindow.winfo_height(), x, y))
+        self.previewwindow.geometry('%dx%d+%d+%d' % (self.previewwindow.winfo_width(),
+                                                     self.previewwindow.winfo_height(), x, y))
+        self.previewwindow.protocol("WM_DELETE_WINDOW", app.closepreview)
 
     # Closes Preview Window    
     def closepreview(self):
@@ -274,31 +229,17 @@ class CoreWindow:
         self.previewbutton.grid(column=3, row=2, rowspan=2, sticky=tk.E + tk.W, padx=5)
         self.previewwindow.destroy()
 
-    # About Window
     def about(self):
         x = self.master.winfo_rootx()
         y = self.master.winfo_rooty()
         x += self.master.winfo_width()
-        self.aboutwindow = tk.Toplevel()
-        self.aboutwindow.title("About")
-        self.logoimg = ImageTk.PhotoImage(Image.open(resource_path("resources/QFLogoImg")))
-        self.logoimage = tk.Label(self.aboutwindow, image=self.logoimg)
-        self.logoimage.grid(row=1, column=1, pady=(15, 0))
-        self.heading = tk.Label(self.aboutwindow, text="QuantiFish", font=("Arial", 18), justify=tk.CENTER).grid(
-            column=1, row=2)
-        self.line2 = tk.Label(self.aboutwindow, text="Version " + version, font=("Consolas", 10),
-                              justify=tk.CENTER).grid(column=1, row=3, pady=(0, 5))
-        self.line3 = tk.Label(self.aboutwindow, text="David Stirling, 2017", font=("Arial", 10),
-                              justify=tk.CENTER).grid(column=1, row=4)
-        self.line4 = tk.Label(self.aboutwindow, text="@DavidRStirling", font=("Arial", 10), justify=tk.CENTER).grid(
-            column=1, row=5, pady=(0, 15))
-        self.aboutwindow.grid_columnconfigure(1, minsize=200)
-        self.aboutwindow.focus_set()
-        self.aboutwindow.grab_set()
-        self.aboutwindow.update_idletasks()
-        self.aboutwindow.geometry(
-            '%dx%d+%d+%d' % (self.aboutwindow.winfo_width(), self.aboutwindow.winfo_height(), x, y))
-        self.aboutwindow.resizable(width=False, height=False)
+        self.about_window = tk.Toplevel(self.master)
+        self.app = AboutWindow(self.about_window)
+        self.about_window.title("About")
+        self.about_window.focus_set()
+        self.about_window.grab_set()
+        self.about_window.iconbitmap(resource_path('resources/QFIcon'))
+        self.about_window.geometry('%dx%d+%d+%d' % (150, 225, x, y))
 
     # Checks mode and closes preview windows to avoid conflict on mode change.
     def checkmode(self):
@@ -328,11 +269,11 @@ class CoreWindow:
 
     # Detect threshold status and disable widgets if it's off.
     def thrstatus(self):
-        if (self.thron.get()) == True:
+        if self.thron.get():
             self.logevent("Threshold Enabled")
             self.threslide.config(state=tk.NORMAL)
             self.setthr.config(state=tk.NORMAL)
-        elif (self.thron.get()) == False:
+        else:
             self.logevent("Threshold Disabled")
             self.threslide.config(state=tk.DISABLED)
             self.setthr.config(state=tk.DISABLED)
@@ -341,14 +282,14 @@ class CoreWindow:
     # Detect clustering status and disable widgets if it's off.
     def cluststatus(self):
         global firstrun
-        if clusteron.get() == True:
+        if clusteron.get():
             self.logevent("Cluster Analysis Enabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.areaslide.config(state=tk.NORMAL)
             self.setarea.config(state=tk.NORMAL)
             minarea.set(10)
             firstrun = True
-        elif clusteron.get() == False:
+        else:
             self.logevent("Cluster Analysis Disabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.areaslide.config(state=tk.DISABLED)
@@ -370,7 +311,7 @@ class CoreWindow:
             self.currdir.config(state=tk.DISABLED)
             self.logevent("Images will be read from: " + str(directory))
             self.dirstatus = True
-            if self.dirstatus and self.savestatus == True:
+            if self.dirstatus and self.savestatus:
                 self.runbutton.config(state=tk.NORMAL, text="Run", bg="#99e699")
         except:
             self.logevent("Directory not set")
@@ -390,7 +331,7 @@ class CoreWindow:
             self.logevent("Data will save in: " + str(self.friendlysavename))
             self.savestatus = True
             firstrun = True
-            if self.dirstatus and self.savestatus == True:
+            if self.dirstatus and self.savestatus:
                 self.runbutton.config(state=tk.NORMAL, text="Run", bg="#99e699")
             else:
                 return
@@ -399,14 +340,14 @@ class CoreWindow:
 
     # Toggle inclusion of subdirectories
     def subtoggle(self):
-        if subdiron.get() == True:
+        if subdiron.get():
             self.logevent("Will process images in subdirectories")
         else:
             self.logevent("Will skip images in subdirectories")
 
     # Explain to user whether they're going to detect channels.
     def detchan(self):
-        if chandet.get() == True:
+        if chandet.get():
             self.logevent(
                 "Will search for Leica metadata to identify colours and then only process images from the selected channel")
         else:
@@ -417,11 +358,11 @@ class CoreWindow:
     def openpreview(self):
         global pospixels
         pospixels = tk.IntVar()
+
         self.fileslist = genfilelist(directory, subdiron.get())
         self.currentpreviewfile = 0
-        value = desiredcolour.get()
         try:
-            if self.dirstatus == False:
+            if not self.dirstatus:
                 self.previewfile = tkfiledialog.askopenfilename(filetypes=[('Tiff file', '*.tif')])
             else:
                 self.previewfile = self.fileslist[self.currentpreviewfile]
@@ -429,24 +370,25 @@ class CoreWindow:
             self.logevent("Unable to open file, did you select a .tif image?")
             return
         self.logevent("Opening preview")
-        try:
-            self.genpreview(self.previewfile, value, False)
-            self.preview_window(self.preview)
-            if self.imagetypefail == True:
-                self.previewframe.destroy()
-                self.previewframe = tk.Frame(self.previewwindow)
-                self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-                self.previewframe.grid_columnconfigure(1, weight=1)
-                self.previewpane = tk.Label(self.previewframe, text="[Preview Not Available]", height=30)
-                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-        except:
-            self.logevent("Failed to generate preview, sorry!")
+        self.genpreview(self.previewfile, desiredcolour.get(), False)
+        #        try:
+        self.preview_window(self.preview)
+        self.previewbutton.grid_forget()
 
-# TODO: Replace CV2 with skimage file handling
-# TODO: Convert RGB imports into greyscale.
-# TODO: Bit depth detection
+        self.refreshpreviewbutton.grid(column=3, row=2, rowspan=2, sticky=tk.E + tk.W + tk.N, padx=5)
+        if self.imagetypefail:
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+            self.previewframe.grid_columnconfigure(1, weight=1)
+            self.previewpane = tk.Label(self.previewframe, text="[Preview Not Available]", height=30)
+            self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+
+    #   except Exception as e:
+    #       self.logevent("Failed to generate preview, sorry!")
 
     # Thresholded Preview Generator
+
     def genpreview(self, tgt, value, wantclusters):
         global maxvalue
         activemode = mode.get()
@@ -467,7 +409,7 @@ class CoreWindow:
             nooverlay = Image.fromarray(imfile, 'RGB')
             mask = (imfile[:, :, value] > thold)
             pospixels.set(np.count_nonzero(mask))
-            if wantclusters == True:
+            if wantclusters:
                 threshtemp = imfile.copy()
                 tmask2 = (imfile[:, :, value] < thold)
                 threshtemp[tmask2] = (0, 0, 0)
@@ -476,7 +418,7 @@ class CoreWindow:
                 positivegroups = areacounts[0][1:][areacounts[1][1:] > minarea.get()]
                 clustermask = np.isin(simpleclusters[:, :, 1], positivegroups)
             imfile[mask] = (0, 191, 255)
-            if wantclusters == True:
+            if wantclusters:
                 imfile[clustermask] = (0, 75, 255)
             self.preview2 = Image.fromarray(imfile, 'RGB')
             self.preview = self.preview2.resize((self.preview2.size[0] // 2, self.preview2.size[1] // 2))
@@ -487,16 +429,16 @@ class CoreWindow:
             nooverlay = Image.fromarray(im, 'RGB')
             mask = (im[:, :, 1] > thold // 256)
             pospixels.set(np.count_nonzero(mask))
-            if wantclusters == True:
+            if wantclusters:
                 threshtemp = imfile.copy()
                 tmask2 = (imfile[:, :] < thold)
-                threshtemp[tmask2] = (0)
+                threshtemp[tmask2] = 0
                 simpleclusters, numclusters = ndi.measurements.label(threshtemp)
                 areacounts = np.unique(simpleclusters, return_counts=True)
                 positivegroups = areacounts[0][1:][areacounts[1][1:] > minarea.get()]
                 clustermask = np.isin(simpleclusters[:, :], positivegroups)
             im[mask] = (0, 191, 255)
-            if wantclusters == True:
+            if wantclusters:
                 im[clustermask] = (0, 75, 255)
             self.preview2 = Image.fromarray(im, 'RGB')
             self.preview = self.preview2.resize((self.preview2.size[0] // 2, self.preview2.size[1] // 2))
@@ -505,181 +447,25 @@ class CoreWindow:
         self.preview = ImageTk.PhotoImage(self.preview)
         self.displayed = "overlay"
 
-    # Regenerate preview, reset window if the source image is changing.
-    def regenpreview(self, mode, wantclusters):
-        try:
-            if self.previewwindow.winfo_exists() == 0:
-                return
-        except:
-            return
-        if mode == "refresh":
-            self.previewframe.destroy()
-            self.previewframe = tk.Frame(self.previewwindow)
-            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-        elif mode == "cluster":
-            self.previewframe.destroy()
-            self.previewframe = tk.Frame(self.previewwindow)
-            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-            try:
-                self.genpreview(self.previewfile, desiredcolour.get(), True)
-                self.previewpane = tk.Label(self.previewframe, image=self.preview)
-                self.previewpane.image = self.preview
-                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-            except:
-                self.logevent("Error generating preview file")
-            self.overlaytoggle.config(relief=tk.SUNKEN)
-            self.displayed = "clusters"
-            return
-        elif mode == "change":
-            self.previewframe.destroy()
-            self.previewframe = tk.Frame(self.previewwindow, height=500)
-            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-            try:
-                self.previewfile = os.path.normpath(tkfiledialog.askopenfilename(filetypes=[('Tiff file', '*.tif')]))
-                self.previewtitle.destroy()
-                self.previewtitle = tk.Label(self.previewwindow, text=("..." + self.previewfile[-100:]))
-                self.previewtitle.grid(row=1, column=1, columnspan=5)
-                if self.previewfile in self.fileslist:
-                    self.currentpreviewfile = self.fileslist.index(self.previewfile)
-                    if self.currentpreviewfile > 0:
-                        self.prevpreviewbutton.config(state=tk.NORMAL)
-                    elif self.currentpreviewfile == 0:
-                        self.prevpreviewbutton.config(state=tk.DISABLED)
-                    if self.currentpreviewfile < len(self.fileslist) - 1:
-                        self.nextpreviewbutton.config(state=tk.NORMAL)
-                    else:
-                        self.nextpreviewbutton.config(state=tk.DISABLED)
-                else:
-                    self.nextpreviewbutton.config(state=tk.DISABLED)
-                    self.prevpreviewbutton.config(state=tk.DISABLED)
-            except:
-                self.logevent("Unable to open file, did you select a .tif image?")
-                self.previewframe.grid_columnconfigure(1, weight=1)
-                self.previewpane = tk.Label(self.previewframe, text="[Preview Not Available]", height=30)
-                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-                return
-        elif mode == "next":
-            self.previewframe.destroy()
-            self.previewframe = tk.Frame(self.previewwindow)
-            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-            self.currentpreviewfile += 1
-            self.prevpreviewbutton.config(state=tk.NORMAL)
-            if self.currentpreviewfile == (len(self.fileslist) - 1):
-                self.nextpreviewbutton.config(state=tk.DISABLED)
-            else:
-                self.nextpreviewbutton.config(state=tk.NORMAL)
-            self.previewfile = self.fileslist[self.currentpreviewfile]
-            self.previewtitle.destroy()
-            self.previewtitle = tk.Label(self.previewwindow, text=("..." + self.previewfile[-100:]))
-            self.previewtitle.grid(row=1, column=1, columnspan=5)
-        elif mode == "previous":
-            self.previewframe.destroy()
-            self.previewframe = tk.Frame(self.previewwindow)
-            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-            self.currentpreviewfile -= 1
-            self.nextpreviewbutton.config(state=tk.NORMAL)
-            if self.currentpreviewfile == 0:
-                self.prevpreviewbutton.config(state=tk.DISABLED)
-            else:
-                self.prevpreviewbutton.config(state=tk.NORMAL)
-            self.previewfile = self.fileslist[self.currentpreviewfile]
-            self.previewtitle.destroy()
-            self.previewtitle = tk.Label(self.previewwindow, text=("..." + self.previewfile[-100:]))
-            self.previewtitle.grid(row=1, column=1, columnspan=5)
-
-        try:
-            self.genpreview(self.previewfile, desiredcolour.get(), False)
-        except:
-            self.logevent("Error generating preview file")
-            return
-        if self.imagetypefail == False:  # Only show preview if the image is the right type.
-            self.previewpane = tk.Label(self.previewframe, image=self.preview)
-            self.previewpane.image = self.preview
-            self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-        else:
-            self.previewframe.destroy()
-            self.previewframe = tk.Frame(self.previewwindow)
-            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
-            self.previewframe.grid_columnconfigure(1, weight=1)
-            self.previewpane = tk.Label(self.previewframe, text="[Preview Not Available]", height=30)
-            self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-        self.overlaytoggle.config(relief=tk.SUNKEN)
-        self.displayed = "overlay"
-
-# TODO: Proper exception handling
-
-    # Automatically generate a threshold value.
-    def autothreshold(self):
-        try:
-            threshold.set(maxvalue + 1)
-            self.regenpreview("nochange", False)
-        except:
-            pass
-
-    # Switch between overlay and original image in preview
-    def switchpreview(self, cluster):
-        if self.imagetypefail == True:
-            return
-        if cluster == False:
-            if self.displayed == "overlay":
-                self.previewpane.grid_forget()
-                self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
-                self.previewpane2.image = self.nooverlay
-                self.previewpane2.grid(row=1, column=1, sticky=tk.E + tk.W)
-                self.overlaytoggle.config(relief=tk.RAISED)
-                self.displayed = "original"
-            elif self.displayed == "original":
-                self.previewpane2.grid_forget()
-                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
-                self.overlaytoggle.config(relief=tk.SUNKEN)
-                self.displayed = "overlay"
-            elif self.displayed == "clusters":
-                self.previewpane.grid_forget()
-                self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
-                self.previewpane2.image = self.nooverlay
-                self.previewpane2.grid(row=1, column=1, sticky=tk.E + tk.W)
-                self.overlaytoggle.config(relief=tk.RAISED)
-                self.displayed = "original"
-        else:
-            if self.displayed == "clusters":
-                self.previewpane.grid_forget()
-                self.previewpane2 = tk.Label(self.previewframe, image=self.nooverlay)
-                self.previewpane2.image = self.nooverlay
-                self.previewpane2.grid(row=1, column=1, sticky=tk.E + tk.W)
-                self.overlaytoggle.config(relief=tk.RAISED)
-                self.displayed = "original"
-            else:
-                self.regenpreview("cluster", True)
-                self.overlaytoggle.config(relief=tk.SUNKEN)
-
-
-# TODO: Fix self assignments which aren't needed.
-    # Save the preview.
-    def savepreview(self):
-        try:
-            self.previewsavename = tkfiledialog.asksaveasfile(mode="w", defaultextension=".tif",
-                                                              title="Choose save location")
-            self.preview2.save(self.previewsavename.name)
-            self.logevent("Saving preview")
-            self.previewsavename.close()
-        except:
-            self.logevent("Unable to save file, is this location valid?")
-            return
+    # TODO: Replace CV2 with skimage file handling
+    # TODO: Convert RGB imports into greyscale.
+    # TODO: Bit depth detection
 
     # Writes headers in output file
     def headers(self):
-        if clusteron.get() == True:
-            self.headings = (
-            'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Total Clusters', 'Total Peaks',
-            'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters',
-            'Positive Pixels in Large Clusters', 'Threshold', 'Channel')
+        if clusteron.get():
+            headings = (
+                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Total Clusters',
+                'Total Peaks',
+                'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters',
+                'Positive Pixels in Large Clusters', 'Threshold', 'Channel')
         else:
-            self.headings = (
-            'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Threshold', 'Channel')
+            headings = (
+                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Threshold', 'Channel')
         try:
             with open(savedir.name, 'w', newline="\n", encoding="utf-8") as f:
                 self.writer = writer(f)
-                self.writer.writerow(self.headings)
+                self.writer.writerow(headings)
                 self.logevent("Save file created successfully")
         except:
             self.logevent("Unable to create save file")
@@ -690,12 +476,13 @@ class CoreWindow:
         writeme = tuple([exportpath]) + exportdata + tuple([threshold.get()] + [colour])
         try:
             with open(savedir.name, 'a', newline="\n", encoding="utf-8") as f:
-                writer = writer(f)
-                writer.writerow(writeme)
-        except:
+                datawriter = writer(f)
+                datawriter.writerow(writeme)
+        except Exception as e:
+            print(e)
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
 
-# TODO: Better UI toggling.
+    # TODO: Better UI toggling.
 
     # Script Starter
     def runscript(self):
@@ -718,7 +505,7 @@ class CoreWindow:
         self.areaslide.config(state=tk.DISABLED)
         self.setarea.config(state=tk.DISABLED)
         self.runbutton.config(text="Stop", bg="#ff4d4d", command=self.abort)
-        if firstrun == True:
+        if firstrun:
             try:
                 self.headers()
                 firstrun = False
@@ -729,7 +516,7 @@ class CoreWindow:
             mprokilla = threading.Event()
             mprokilla.set()
             mpro = threading.Thread(target=cyclefiles, args=(
-            mprokilla, directory, mode.get(), threshold.get(), subdiron.get(), desiredcolour.get(), findmeta()))
+                mprokilla, directory, mode.get(), threshold.get(), subdiron.get(), desiredcolour.get(), findmeta()))
             mpro.setDaemon(True)
             mpro.start()
         except:
@@ -745,10 +532,10 @@ class CoreWindow:
             app.saveselect.config(state=tk.NORMAL)
             app.thrcheck.config(state=tk.NORMAL)
             app.cluscheck.config(state=tk.NORMAL)
-            if clusteron.get() == True:
+            if clusteron.get():
                 app.areaslide.config(state=tk.NORMAL)
                 app.setarea.config(state=tk.NORMAL)
-            if app.thron.get() == True:
+            if app.thron.get():
                 app.setthr.config(state=tk.NORMAL)
                 app.threslide.config(state=tk.NORMAL)
             return
@@ -771,10 +558,10 @@ class CoreWindow:
             app.saveselect.config(state=tk.NORMAL)
             app.thrcheck.config(state=tk.NORMAL)
             app.cluscheck.config(state=tk.NORMAL)
-            if clusteron.get() == True:
+            if clusteron.get():
                 app.areaslide.config(state=tk.NORMAL)
                 app.setarea.config(state=tk.NORMAL)
-            if app.thron.get() == True:
+            if app.thron.get():
                 app.setthr.config(state=tk.NORMAL)
                 app.threslide.config(state=tk.NORMAL)
         except:
@@ -783,7 +570,7 @@ class CoreWindow:
 
 # Microscope Settings Detector, searches for metadata and determines channel identities
 def findmeta():
-    global colour
+    global colour, colourid, chandet, directory
     global colourid
     global chandet
     greenid = "Unknown"
@@ -793,10 +580,10 @@ def findmeta():
         colour = "Unknown"
         return False
     for root, dirs, files in os.walk(directory):
-        for dir in dirs:
-            if "MetaData" in dir:
+        for folder in dirs:
+            if "MetaData" in folder:
                 app.logevent("Found MetaData folder, trying to pull image parameters...")
-                metadir = os.path.join(root, dir)
+                metadir = os.path.join(root, folder)
                 for root, dirs, files in os.walk(metadir):
                     for file in files:
                         if file.endswith(".xml"):
@@ -835,21 +622,20 @@ def findmeta():
     colour = "Unknown"
     return False
 
-# TODO: Improve file list generation.
+
 # File List Generator
 def genfilelist(tgtdirectory, subdirectories):
-    if subdirectories == False:
-        return [os.path.normpath(os.path.join(root, f)) for root, dirs, files in os.walk(tgtdirectory) for f in files if
-                f.endswith(".tif") and root == tgtdirectory]
-    elif subdirectories == True:
-        return [os.path.normpath(os.path.join(root, f)) for root, dirs, files in os.walk(tgtdirectory) for f in files if
-                f.endswith(".tif")]
+    return [os.path.normpath(os.path.join(root, f)) for root, dirs, files in os.walk(tgtdirectory) for f in files if
+            f.lower().endswith((".tif", ".tiff")) and not f.startswith(".") and (
+                    root == tgtdirectory or subdirectories)]
 
 
 # Master File Cycler
 def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desiredcolourid, metastatus):
     filelist = genfilelist(tgtdirectory, subdirectories)
-    if metastatus == False:
+    # TODO: ADD A PROGRESSBAR FUNCTION
+    # TODO: Handle inappropriate filetypes better.
+    if not metastatus:
         for file in filelist:
             if stopper.wait():
                 app.logevent("Analysing: " + file)
@@ -896,10 +682,10 @@ def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desire
     app.saveselect.config(state=tk.NORMAL)
     app.thrcheck.config(state=tk.NORMAL)
     app.cluscheck.config(state=tk.NORMAL)
-    if clusteron.get() == True:
+    if clusteron.get():
         app.areaslide.config(state=tk.NORMAL)
         app.setarea.config(state=tk.NORMAL)
-    if app.thron.get() == True:
+    if app.thron.get():
         app.setthr.config(state=tk.NORMAL)
         app.threslide.config(state=tk.NORMAL)
     app.runbutton.config(text="Run", bg="#99e699", command=app.runscript)
@@ -907,36 +693,30 @@ def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desire
 
 
 # Data generators
-def genstats(input, x, mode2, th, wantclusters):
+def genstats(inputimage, x, mode2, th, wantclusters):
     if mode2 == "RGB":
-        input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
-        max = np.amax(input[:, :, x])
-        min = np.amin(input[:, :, x])
-        mask = (input[:, :, x] < th)
+        inputimage = cv2.cvtColor(inputimage, cv2.COLOR_BGR2RGB)
+        max_value = np.amax(inputimage[:, :, x])
+        min_value = np.amin(inputimage[:, :, x])
+        mask = (inputimage[:, :, x] < th)
         try:
-            input[mask] = (0, 0, 0)
+            inputimage[mask] = (0, 0, 0)
         except:
-            input[mask] = (0, 0, 0, 255)
-        intint = np.sum(input[:, :, x])
-        count = np.count_nonzero(input[:, :, x])
-        if wantclusters == True:
-            numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil = getclusters(input, th, mode2,
-                                                                                                     x, minarea.get())
-            return (intint, count, max, min, numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil)
-        return (intint, count, max, min)
-
-    elif mode2 == "RAW":
-        max = np.amax(input)
-        min = np.amin(input)
-        mask = (input < th)
-        input[mask] = (0)
-        intint = np.sum(input)
-        count = np.count_nonzero(input)
-        if wantclusters == True:
-            numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil = getclusters(input, th, mode2,
-                                                                                                     x, minarea.get())
-            return (intint, count, max, min, numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil)
-        return (intint, count, max, min)
+            inputimage[mask] = (0, 0, 0, 255)
+        intint = np.sum(inputimage[:, :, x])
+        count = np.count_nonzero(inputimage[:, :, x])
+    else:  # mode2 == "RAW"
+        max_value = np.amax(inputimage)
+        min_value = np.amin(inputimage)
+        mask = (inputimage < th)
+        inputimage[mask] = 0
+        intint = np.sum(inputimage)
+        count = np.count_nonzero(inputimage)
+    if wantclusters:
+        numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil = getclusters(inputimage, th, mode2,
+                                                                                                 x, minarea.get())
+        return intint, count, max_value, min_value, numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil
+    return intint, count, max_value, min_value
 
 
 ## Cluster Analysis
@@ -973,12 +753,256 @@ def getclusters(trgtimg, thresh, mode2, x, minimumarea):
         targetclusters = np.sum(areacounts[1][1:] > minimumarea)
         # Clone the image then remove any staining in negative clusters. Quantifies staining in positive clusters.
         filthresholded = trgtimg.copy()
-        filthresholded[np.invert(clustermask)] = (0)
+        filthresholded[np.invert(clustermask)] = 0
         intintfil = np.sum(filthresholded)
         countfil = np.count_nonzero(filthresholded)
         localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=thresh)
     targetpeaks, numtargetpeaks = ndi.measurements.label(localmax2)
-    return (numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil)
+    return numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil
+
+    # Preview Window
+
+
+def savepreview():
+    try:
+        previewsavename = tkfiledialog.asksaveasfile(mode="w", defaultextension=".tif",
+                                                     title="Choose save location")
+        app.preview2.save(previewsavename.name)
+        app.logevent("Saving preview")
+        previewsavename.close()
+    except:
+        app.logevent("Unable to save file, is this location valid?")
+        return
+
+
+class PreviewWindow:
+    def __init__(self, master, firstimage):
+        self.master = master
+        x = self.master.winfo_rootx()
+        y = self.master.winfo_rooty()
+        x += self.master.winfo_width()
+        self.previewwindow = tk.Frame(self.master)
+        self.previewtitle = tk.Label(self.previewwindow, text=("..." + app.previewfile[-100:]))
+        self.previewtitle.grid(row=1, column=1, columnspan=5)
+
+        self.previewframe = tk.Frame(self.previewwindow)  # Frame to aid holding and deleting preview images.
+        self.previewpane = tk.Label(self.previewframe, image=firstimage)
+        self.previewpane.image = firstimage
+        self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+        self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+
+        self.previewcontrols = tk.Frame(self.previewwindow, bd=2, relief=tk.GROOVE)  # Frame for preview controls.
+        self.previewcontrols.grid(column=1, columnspan=5, row=3, sticky=tk.E + tk.W + tk.N + tk.S)
+        self.prevpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Previous\nFile",
+                                           command=lambda: self.regenpreview("previous"))
+        self.prevpreviewbutton.grid(column=1, row=1, rowspan=2, sticky=tk.E, padx=(3, 0), pady=5, ipadx=10)
+        self.prevpreviewbutton.config(state=tk.DISABLED)
+        self.nextpreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Next\nFile",
+                                           command=lambda: self.regenpreview("next"))
+        self.nextpreviewbutton.grid(column=2, row=1, rowspan=2, sticky=tk.E, padx=(0, 3), pady=5, ipadx=10)
+        if not app.dirstatus:
+            self.nextpreviewbutton.config(state=tk.DISABLED)
+        self.changepreviewbutton = tk.Button(self.previewcontrols, width=5, height=2, text="Select\nFile",
+                                             command=lambda: self.regenpreview("change"))
+        self.changepreviewbutton.grid(column=3, row=1, rowspan=2, sticky=tk.E + tk.W, padx=3, ipadx=10)
+        self.refresh = tk.Button(self.previewcontrols, height=2, text="Refresh",
+                                 command=lambda: self.regenpreview("refresh")).grid(column=4, row=1, rowspan=2,
+                                                                                    sticky=tk.E, padx=3, pady=5,
+                                                                                    ipadx=10)
+        self.overlaytoggle = tk.Button(self.previewcontrols, height=2, text="Show\nOverlay",
+                                       command=lambda: self.switchpreview(False), relief=tk.SUNKEN)
+        self.overlaytoggle.grid(column=5, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
+        self.clustertoggle = tk.Button(self.previewcontrols, height=2, text="Find\nClusters",
+                                       command=lambda: self.switchpreview(True))
+        self.clustertoggle.grid(column=6, row=1, rowspan=2, padx=3, pady=5, ipadx=10)
+
+        self.overlaysave = tk.Button(self.previewcontrols, height=2, text="Save\nOverlay",
+                                     command=lambda: savepreview())
+        self.overlaysave.grid(column=7, row=1, rowspan=2, sticky=tk.W, padx=3, pady=5, ipadx=10)
+        self.autothresh = tk.Button(self.previewcontrols, height=2, width=5, text="Auto\nThreshold",
+                                    command=lambda: self.autothreshold()).grid(column=8, row=1, rowspan=2, sticky=tk.E,
+                                                                               padx=5, pady=5, ipadx=15)
+        self.pospixelbox = tk.Frame(self.previewcontrols, height=5, bd=2, relief=tk.RIDGE)
+        self.poscountlabel = tk.Label(self.pospixelbox, text="Positive Pixels:").grid(column=1, row=1,
+                                                                                      sticky=tk.W + tk.E, padx=(3, 0))
+        self.poscount = tk.Label(self.pospixelbox, textvariable=pospixels)
+        self.poscount.grid(column=1, row=2, sticky=tk.W + tk.E, )
+        self.pospixelbox.grid(column=9, row=1, rowspan=2, sticky=tk.W, padx=(5, 0))
+        self.previewexplain = tk.Label(self.previewwindow,
+                                       text="Light blue pixels represent areas which will be counted as positive.\n Clicking \"Find Clusters\" will mark detected areas in a darker blue. \n Use AutoThreshold on a negative control or set threshold manually to remove autofluorescence.").grid(
+            column=1, row=4, columnspan=5)
+        self.previewwindow.pack()
+
+    # Regenerate preview, reset window if the source image is changing.
+    def regenpreview(self, mode):
+        try:
+            if self.previewwindow.winfo_exists() == 0:
+                return
+        except:
+            return
+        if mode == "refresh":
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+        elif mode == "cluster":
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+            try:
+                app.genpreview(app.previewfile, desiredcolour.get(), True)
+                self.previewpane = tk.Label(self.previewframe, image=app.preview)
+                self.previewpane.image = app.preview
+                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+            except:
+                app.logevent("Error generating preview file")
+            self.overlaytoggle.config(relief=tk.SUNKEN)
+            self.displayed = "clusters"
+            return
+        elif mode == "change":
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow, height=500)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+            try:
+                app.previewfile = os.path.normpath(tkfiledialog.askopenfilename(filetypes=[('Tiff file', '*.tif')]))
+                self.previewtitle.destroy()
+                self.previewtitle = tk.Label(self.previewwindow, text=("..." + app.previewfile[-100:]))
+                self.previewtitle.grid(row=1, column=1, columnspan=5)
+                if app.previewfile in app.fileslist:
+                    app.currentpreviewfile = app.fileslist.index(app.previewfile)
+                    if app.currentpreviewfile > 0:
+                        self.prevpreviewbutton.config(state=tk.NORMAL)
+                    elif app.currentpreviewfile == 0:
+                        self.prevpreviewbutton.config(state=tk.DISABLED)
+                    if app.currentpreviewfile < len(app.fileslist) - 1:
+                        self.nextpreviewbutton.config(state=tk.NORMAL)
+                    else:
+                        self.nextpreviewbutton.config(state=tk.DISABLED)
+                else:
+                    self.nextpreviewbutton.config(state=tk.DISABLED)
+                    self.prevpreviewbutton.config(state=tk.DISABLED)
+            except Exception as e:
+                print(e)
+                app.logevent("Unable to open file, did you select a .tif image?")
+                self.previewframe.grid_columnconfigure(1, weight=1)
+                self.previewpane = tk.Label(self.previewframe, text="[Preview Not Available]", height=30)
+                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+                return
+        elif mode == "next":
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+            app.currentpreviewfile += 1
+            self.prevpreviewbutton.config(state=tk.NORMAL)
+            if app.currentpreviewfile == (len(app.fileslist) - 1):
+                self.nextpreviewbutton.config(state=tk.DISABLED)
+            else:
+                self.nextpreviewbutton.config(state=tk.NORMAL)
+            app.previewfile = app.fileslist[app.currentpreviewfile]
+            self.previewtitle.destroy()
+            self.previewtitle = tk.Label(self.previewwindow, text=("..." + app.previewfile[-100:]))
+            self.previewtitle.grid(row=1, column=1, columnspan=5)
+        elif mode == "previous":
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+            app.currentpreviewfile -= 1
+            self.nextpreviewbutton.config(state=tk.NORMAL)
+            if app.currentpreviewfile == 0:
+                self.prevpreviewbutton.config(state=tk.DISABLED)
+            else:
+                self.prevpreviewbutton.config(state=tk.NORMAL)
+            app.previewfile = app.fileslist[app.currentpreviewfile]
+            self.previewtitle.destroy()
+            self.previewtitle = tk.Label(self.previewwindow, text=("..." + app.previewfile[-100:]))
+            self.previewtitle.grid(row=1, column=1, columnspan=5)
+
+        try:
+            app.genpreview(app.previewfile, desiredcolour.get(), False)
+        except:
+            app.logevent("Error generating preview file")
+            return
+        if not app.imagetypefail:  # Only show preview if the image is the right type.
+            self.previewpane = tk.Label(self.previewframe, image=app.preview)
+            self.previewpane.image = app.preview
+            self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+        else:
+            self.previewframe.destroy()
+            self.previewframe = tk.Frame(self.previewwindow)
+            self.previewframe.grid(row=2, column=1, columnspan=5, sticky=tk.N + tk.S + tk.E + tk.W)
+            self.previewframe.grid_columnconfigure(1, weight=1)
+            self.previewpane = tk.Label(self.previewframe, text="[Preview Not Available]", height=30)
+            self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+        self.overlaytoggle.config(relief=tk.SUNKEN)
+        self.displayed = "overlay"
+
+    # TODO: Proper exception handling
+
+    # Automatically generate a threshold value.
+    def autothreshold(self):
+        try:
+            threshold.set(maxvalue + 1)
+            self.regenpreview("nochange")
+        except:
+            pass
+
+    # Switch between overlay and original image in preview
+    def switchpreview(self, cluster):
+        if app.imagetypefail:
+            return
+        if not cluster:
+            if app.displayed == "overlay":
+                self.previewpane.grid_forget()
+                self.previewpane2 = tk.Label(self.previewframe, image=app.nooverlay)
+                self.previewpane2.image = app.nooverlay
+                self.previewpane2.grid(row=1, column=1, sticky=tk.E + tk.W)
+                self.overlaytoggle.config(relief=tk.RAISED)
+                app.displayed = "original"
+            elif app.displayed == "original":
+                self.previewpane2.grid_forget()
+                self.previewpane.grid(row=1, column=1, sticky=tk.E + tk.W)
+                self.overlaytoggle.config(relief=tk.SUNKEN)
+                app.displayed = "overlay"
+            elif app.displayed == "clusters":
+                self.previewpane.grid_forget()
+                self.previewpane2 = tk.Label(self.previewframe, image=app.nooverlay)
+                self.previewpane2.image = app.nooverlay
+                self.previewpane2.grid(row=1, column=1, sticky=tk.E + tk.W)
+                self.overlaytoggle.config(relief=tk.RAISED)
+                app.displayed = "original"
+        else:
+            if app.displayed == "clusters":
+                self.previewpane.grid_forget()
+                self.previewpane2 = tk.Label(self.previewframe, image=app.nooverlay)
+                self.previewpane2.image = app.nooverlay
+                self.previewpane2.grid(row=1, column=1, sticky=tk.E + tk.W)
+                self.overlaytoggle.config(relief=tk.RAISED)
+                app.displayed = "original"
+            else:
+                self.regenpreview("cluster")
+                self.overlaytoggle.config(relief=tk.SUNKEN)
+
+    # TODO: Fix self assignments which aren't needed.
+
+
+# About Window
+class AboutWindow:
+    # Simple about window frame
+    def __init__(self, master):
+        self.master = master
+        self.aboutwindow = tk.Frame(self.master)
+        self.logo = Image.open(resource_path("resources/QFLogoImg"))
+        self.logoimg = ImageTk.PhotoImage(self.logo)
+        self.logoimage = tk.Label(self.aboutwindow, image=self.logoimg)
+        self.logoimage.pack(pady=(15, 0))
+        self.heading = tk.Label(self.aboutwindow, text="QuantiFish", font=("Arial", 18), justify=tk.CENTER)
+        self.heading.pack()
+        self.line2 = tk.Label(self.aboutwindow, text="Version " + version, font=("Consolas", 10), justify=tk.CENTER)
+        self.line2.pack(pady=(0, 5))
+        self.line3 = tk.Label(self.aboutwindow, text="David Stirling, 2018", font=("Arial", 10), justify=tk.CENTER)
+        self.line3.pack()
+        self.line4 = tk.Label(self.aboutwindow, text="@DavidRStirling", font=("Arial", 10), justify=tk.CENTER)
+        self.line4.pack(pady=(0, 15))
+        self.aboutwindow.pack()
 
 
 # UI Initialiser
@@ -992,5 +1016,5 @@ def main():
 if __name__ == "__main__":
     main()
 
-
 # TODO: Add progress bar
+# TODO: Update to ttk
