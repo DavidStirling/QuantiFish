@@ -19,6 +19,7 @@ import os
 import threading
 import tkinter as tk
 import tkinter.filedialog as tkfiledialog
+from tkinter import ttk
 from csv import writer
 from xml.dom import minidom
 
@@ -34,6 +35,12 @@ directory = "Select a directory to process"
 savedir = "Select a location to save the output"
 colour = "Unknown"  # By default we don't know which channel we're looking at.
 firstrun = True  # Do we need to write headers to the output file?
+# Parameters for different display modes.
+depthmap = {0: ("8-bit", 1, 256, 16), 1: ("10-bit", 4, 1024, 64), 2: ("12-bit", 16, 4096, 256),
+            3: ("16-bit", 256, 65536, 4096)}  # (ID, multiplier, maxrange, absmin)
+currentdepthname, scalemultiplier, maxrange, absmin = depthmap[0]
+manualbitdepth = False
+currentdepth = 0
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -61,148 +68,216 @@ class CoreWindow:
         self.about_window = None
         self.previewwindow = None
         self.previewer_contents = None
+        self.locked = False
         self.master.wm_title("QuantiFish")
         self.master.iconbitmap(resource_path('resources/QFIcon'))
-        self.master.resizable(width=False, height=False)
+        # self.master.resizable(width=False, height=False)
         self.master.grid_columnconfigure(1, minsize=100)
         self.master.grid_columnconfigure(2, weight=1, minsize=250)
         self.master.grid_columnconfigure(3, minsize=100)
-        self.logframe = tk.Frame()
-        self.scrollbar = tk.Scrollbar(self.logframe, orient=tk.VERTICAL)
-        self.logbox = tk.Listbox(self.logframe, yscrollcommand=self.scrollbar.set, activestyle="none")
-        self.logbox.grid(column=1, row=1, sticky=tk.W + tk.E + tk.N + tk.S)
-        self.scrollbar.grid(column=2, row=1, sticky=tk.W + tk.E + tk.N + tk.S)
-        self.logbox.insert(tk.END, "Log:")
-        self.logframe.grid(column=1, columnspan=3, row=9, pady=(10, 0), sticky=tk.W + tk.E + tk.N + tk.S)
-        self.logframe.grid_columnconfigure(1, weight=1, minsize=250)
+        # self.logframe.grid(column=1, columnspan=3, row=9, pady=(10, 0), sticky=tk.W + tk.E + tk.N + tk.S)
+        #self.logframe.grid_columnconfigure(1, weight=1, minsize=250)
 
         # Top Bar
-        self.header = tk.Frame()
+        self.header = ttk.Frame(self.master)
         self.img = ImageTk.PhotoImage(Image.open(resource_path("resources/QFLogo")))
-        self.logo = tk.Label(self.header, image=self.img)
+        self.logo = ttk.Label(self.header, image=self.img)
         self.logo.grid(column=1, row=1, rowspan=2, sticky=tk.W)
-        self.title = tk.Label(self.header, text="QuantiFish", font=("Arial", 25),
+        self.title = ttk.Label(self.header, text="QuantiFish", font=("Arial", 25),
                               justify=tk.CENTER).grid(column=2, columnspan=1, row=1, sticky=tk.E + tk.W)
-        self.subtitle = tk.Label(self.header, text="Zebrafish Image Analyser", font=("Arial", 10),
+        self.subtitle = ttk.Label(self.header, text="Zebrafish Image Analyser", font=("Arial", 10),
                                  justify=tk.CENTER).grid(column=2, columnspan=1, row=2, sticky=tk.E + tk.W)
-        self.header.grid(column=1, row=1, columnspan=2, sticky=tk.W + tk.E + tk.N + tk.S)
-        self.about = tk.Button(master, height=1, text="About", command=self.about).grid(column=3, row=1,
-                                                                                        rowspan=1,
-                                                                                        sticky=tk.E + tk.W,
-                                                                                        padx=5)
+        self.about = ttk.Button(self.header, text="About", command=self.lock_ui)
+        self.about.grid(column=4, row=1, rowspan=1, sticky=tk.E, padx=10, pady=5)
+        self.header.grid_columnconfigure(3, weight=1)
 
+        self.corewrapper = ttk.Frame(self.master)
+        self.column1 = ttk.Frame(self.corewrapper)
+        self.column2 = ttk.Frame(self.corewrapper)
+        self.column3 = ttk.Frame(self.corewrapper)
+        self.logwrapper = ttk.Frame(self.master)
+
+        self.header.pack(fill=tk.X, expand=False)
+        self.corewrapper.pack(fill=tk.X, expand=False)
+        self.logwrapper.pack(fill=tk.BOTH, expand=True)
+
+        self.scrollbar = ttk.Scrollbar(self.logwrapper, orient=tk.VERTICAL)
+        self.logbox = tk.Listbox(self.logwrapper, yscrollcommand=self.scrollbar.set, activestyle="none")
+        self.logbox.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.logbox.insert(tk.END, "Log:")
+
+        # TODO: Redo packing. Replace labels with labelframes.
         # Directory Selector
-        self.dirselect = tk.Button(master, height=2, text="Select Directory", command=self.directselect)
-        self.dirselect.grid(column=1, row=2, rowspan=2, padx=5, sticky=tk.E + tk.W)
-        self.currdir = tk.Entry(master, textvariable=directory)
+
+        self.dirselect = ttk.Button(self.corewrapper, text="Select Directory", command=self.directselect)
+        self.dirselect.grid(column=1, row=1, padx=5, sticky=tk.NSEW)
+
+        self.dirframe = ttk.Frame(self.corewrapper)
+        self.currdir = ttk.Entry(self.dirframe, textvariable=directory)
         self.currdir.insert(tk.END, directory)
         self.currdir.config(state=tk.DISABLED)
-        self.currdir.grid(column=2, row=2, sticky=tk.E + tk.W)
+        self.currdir.grid(column=1, row=1, columnspan=5, sticky=tk.E + tk.W)
+
+        self.bitlabel = ttk.Label(self.dirframe, text="Bit Depth:")
+
+        self.bitcheck = ttk.Combobox(self.dirframe, state="readonly")
+        self.bitcheck['values'] = ('Auto Detect', '8-bit', '10-bit', '12-bit', '16-bit')
+        self.bitcheck.current(0)
+        self.bitlabel.grid(column=1, row=2)
+        self.bitcheck.grid(column=2, row=2)
         global subdiron
         subdiron = tk.BooleanVar()
         subdiron.set(True)
-        self.subdircheck = tk.Checkbutton(master, text="Include Subdirectories", variable=subdiron, onvalue=True,
-                                          offvalue=False, command=self.subtoggle)
-        self.subdircheck.grid(column=2, row=3, sticky=tk.E)
+        self.subdircheck = ttk.Checkbutton(self.dirframe, text="Include Subdirectories", variable=subdiron,
+                                           onvalue=True,
+                                           offvalue=False, command=self.subtoggle)
+        self.subdircheck.grid(column=5, row=2, sticky=tk.E)
+        self.dirframe.grid(column=2, row=1, sticky=tk.NSEW)
+        self.dirframe.grid_columnconfigure(4, weight=1)
 
         # Preview Button
-        self.previewbutton = tk.Button(master, height=2, text="Preview", command=self.openpreview)
-        self.previewbutton.grid(column=3, row=2, rowspan=2, sticky=tk.E + tk.W, padx=5)
-        self.refreshpreviewbutton = tk.Button(self.master, height=2, text="Refresh",
+        self.previewbutton = ttk.Button(self.corewrapper, text="Preview", command=self.openpreview)
+        self.previewbutton.grid(column=3, row=1, sticky=tk.NSEW, padx=5)
+        self.refreshpreviewbutton = ttk.Button(self.corewrapper, text="Refresh",
                                               command=lambda: self.previewer_contents.regenpreview("refresh"))
 
-        # Mode Selector
+        # File List Filter
+        self.filtermode = tk.IntVar()
+        self.filtermode.set(0)
+        self.filterbox = ttk.LabelFrame(self.corewrapper, text="Filter File List")
+        self.filterbox.grid(column=1, row=2, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
+        self.nofilter = ttk.Radiobutton(self.filterbox, text="All", variable=self.filtermode, value="0",
+                                        command=self.checkmode)
+        self.nofilter.grid(column=1, row=1, sticky=tk.W)
+        self.textfilter = ttk.Radiobutton(self.filterbox, text="Keyword:", variable=self.filtermode, value="1",
+                                          command=self.checkmode)
+        self.textfilter.grid(column=1, row=2, sticky=tk.W)
+        self.textentry = ttk.Entry(self.filterbox, width=8)
+        self.textentry.grid(column=2, row=2, sticky=tk.NSEW, pady=3)
+        self.greyonly = ttk.Radiobutton(self.filterbox, text="Grey Only", variable=self.filtermode, value="2",
+                                        command=self.checkmode)
+        self.greyonly.grid(column=2, row=1, sticky=tk.W)
+        self.detect = ttk.Radiobutton(self.filterbox, text="Detect:", variable=self.filtermode, value="3",
+                                      command=self.checkmode)
+        self.detect.grid(column=1, row=4, sticky=tk.W)
+        self.channelselect = ttk.Combobox(self.filterbox, values=["Blue", "Green", "Red", "Far Red"], width=10,
+                                          state='readonly')
+        self.channelselect.grid(column=2, row=4, sticky=tk.NSEW)
+        self.channelselect.current(1)
+        self.testbutton = ttk.Button(self.filterbox, text="Test")
+        self.testbutton.grid(column=1, row=5, columnspan=2, pady=(3, 0))
+        # for item in ["Blue", "Green", "Red", "Far Red"]:
+        #    self.channelselect.insert(tk.END, item)
+
+        """# Mode Selector
         global mode
         mode = tk.StringVar()
         mode.set("RGB")
         global chandet
         chandet = tk.BooleanVar()
         chandet.set(True)
-        self.modebox = tk.Frame(bd=2, relief=tk.GROOVE)
+        self.modebox = ttk.LabelFrame(relief=tk.GROOVE, text="Image Type:")
         self.modebox.grid(column=1, row=4, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
-        self.modelabel = tk.Label(self.modebox, text="Image Type:").grid(column=1, row=1, sticky=tk.W)
-        self.RGB = tk.Radiobutton(self.modebox, text="Colour", variable=mode, value="RGB",
+        self.RGB = ttk.Radiobutton(self.modebox, text="Colour", variable=mode, value="RGB",
                                   command=lambda: self.checkmode())
         self.RGB.grid(column=1, row=2, sticky=tk.W)
-        self.RAW = tk.Radiobutton(self.modebox, text="Greyscale", variable=mode, value="RAW",
+        self.RAW = ttk.Radiobutton(self.modebox, text="Greyscale", variable=mode, value="RAW",
                                   command=lambda: self.checkmode())
         self.RAW.grid(column=1, row=3, sticky=tk.W)
-        self.detecttoggle = tk.Checkbutton(self.modebox, text="Detect Channels", variable=chandet, onvalue=True,
+        self.detecttoggle = ttk.Checkbutton(self.modebox, text="Detect Channels", variable=chandet, onvalue=True,
                                            offvalue=False, command=self.detchan)
         self.detecttoggle.grid(column=1, row=4, sticky=tk.W)
-
+        """
         # Threshold Selector
         global threshold
-        self.thrframe = tk.Frame(bd=2, relief=tk.GROOVE)
+        self.thrframe = ttk.LabelFrame(self.corewrapper, text="Threshold (minimum intensity to count):")
         threshold = tk.IntVar()
         threshold.set(60)
         self.threslide = tk.Scale(self.thrframe, from_=0, to=256, tickinterval=64, variable=threshold,
-                                  orient=tk.HORIZONTAL, label="Threshold (minimum intensity to count):",
+                                  orient=tk.HORIZONTAL,
                                   command=lambda x: self.previewer_contents.regenpreview("nochange"))
         self.threslide.grid(column=2, row=4, rowspan=2, ipadx=150)
-        self.setthr = tk.Entry(self.thrframe, textvariable=threshold, width=5, justify=tk.CENTER, )
+        self.setthr = ttk.Entry(self.thrframe, textvariable=threshold, width=5, justify=tk.CENTER, )
         self.setthr.bind("<Return>", lambda x: self.previewer_contents.regenpreview("nochange"))
         self.setthr.grid(column=3, row=4, sticky=tk.S)
         self.thron = tk.BooleanVar()
         self.thron.set(True)
-        self.thrcheck = tk.Checkbutton(self.thrframe, text="Apply\nThreshold", variable=self.thron, onvalue=True,
+        self.thrcheck = ttk.Checkbutton(self.thrframe, text="Apply\nThreshold", variable=self.thron, onvalue=True,
                                        offvalue=False, command=self.thrstatus)
         self.thrcheck.grid(column=3, row=5, sticky=tk.E)
-        self.thrframe.grid(column=2, row=4, sticky=tk.W + tk.E + tk.N + tk.S, pady=5)
+        self.thrframe.grid(column=2, row=2, sticky=tk.NSEW, pady=5)
+        # self.thrframe.grid(column=2, row=4, sticky=tk.W + tk.E + tk.N + tk.S, pady=5)
 
+        # Small Clustering Setup
+        global minarea, clusteron
+        clusteron = tk.BooleanVar()
+        clusteron.set(False)
+        minarea = tk.IntVar()
+        minarea.set(0)
+        self.clusterbox = ttk.LabelFrame(self.corewrapper, relief=tk.GROOVE, text="Cluster Analysis")
+        self.clusterbox.grid(column=3, row=2, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
+        self.cluscheck = ttk.Checkbutton(self.clusterbox, text="Enable", variable=clusteron, onvalue=True,
+                                         offvalue=False, command=self.cluststatus)
+        self.cluscheck.pack()
+        self.setsizelabel = ttk.Label(self.clusterbox, text="Minimum Size")
+        self.setsizelabel.pack(pady=(10, 0))
+        self.setarea = ttk.Entry(self.clusterbox, textvariable=minarea, width=5, justify=tk.CENTER, )
+        self.setarea.bind("<Return>", lambda x: self.previewer_contents.regenpreview("nochange"))
+        self.setarea.pack()
+
+        """
         # Colour Selector
         global desiredcolour
         desiredcolour = tk.IntVar()
         desiredcolour.set(1)
-        self.colbox = tk.Frame(bd=2, relief=tk.GROOVE)
+        self.colbox = ttk.LabelFrame(relief=tk.GROOVE, text="Quantifying:")
         self.colbox.grid(column=3, row=4, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
-        self.colabel = tk.Label(self.colbox, text="Quantifying:").grid(column=1, row=1, sticky=tk.W)
-        self.opt1 = tk.Radiobutton(self.colbox, text="Blue", variable=desiredcolour, value=2, )
+        self.opt1 = ttk.Radiobutton(self.colbox, text="Blue", variable=desiredcolour, value=2, )
         self.opt1.grid(column=1, row=2, sticky=tk.W)
-        self.opt2 = tk.Radiobutton(self.colbox, text="Green", variable=desiredcolour, value=1, )
+        self.opt2 = ttk.Radiobutton(self.colbox, text="Green", variable=desiredcolour, value=1, )
         self.opt2.grid(column=1, row=3, sticky=tk.W)
-        self.opt3 = tk.Radiobutton(self.colbox, text="Red", variable=desiredcolour, value=0, )
+        self.opt3 = ttk.Radiobutton(self.colbox, text="Red", variable=desiredcolour, value=0, )
         self.opt3.grid(column=1, row=4, sticky=tk.W)
 
         # Cluster Explain Text
-        self.clusterbox = tk.Frame(bd=2, relief=tk.GROOVE)
+        self.clusterbox = ttk.LabelFrame(text="Clustering Analysis:", relief=tk.GROOVE)
         self.clusterbox.grid(column=1, row=5, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
-        self.cluslabel = tk.Label(self.clusterbox, text="Clustering Analysis:").grid(column=1, row=1, sticky=tk.W)
-        self.clusstatement = tk.Label(self.clusterbox, text="Search for large\nareas of staining")
+        self.clusstatement = ttk.Label(self.clusterbox, text="Search for large\nareas of staining")
         self.clusstatement.grid(column=1, row=2, sticky=tk.W + tk.E + tk.N + tk.S)
 
         # Cluster Selector
-        global minarea
-        global clusteron
-        self.clusframe = tk.Frame(bd=2, relief=tk.GROOVE)
-        minarea = tk.IntVar()
-        minarea.set(0)
+        #global minarea
+        #global clusteron
+        self.clusframe = ttk.LabelFrame(text="Minimum cluster size (pixels):",)
+        #minarea = tk.IntVar()
+        #minarea.set(0)
         self.areaslide = tk.Scale(self.clusframe, from_=0, to=1000, tickinterval=250, variable=minarea,
-                                  orient=tk.HORIZONTAL, label="Minimum cluster size (pixels):",
+                                  orient=tk.HORIZONTAL,
                                   command=lambda x: self.previewer_contents.regenpreview("nochange"))
         self.areaslide.grid(column=2, row=4, rowspan=2, ipadx=150)
-        self.setarea = tk.Entry(self.clusframe, textvariable=minarea, width=5, justify=tk.CENTER, )
+        self.setarea = ttk.Entry(self.clusframe, textvariable=minarea, width=5, justify=tk.CENTER, )
         self.setarea.bind("<Return>", lambda x: self.previewer_contents.regenpreview("nochange"))
         self.setarea.grid(column=3, row=4, sticky=tk.S)
         clusteron = tk.BooleanVar()
         clusteron.set(False)
-        self.cluscheck = tk.Checkbutton(self.clusframe, text="Analyse\nClustering", variable=clusteron, onvalue=True,
+        self.cluscheck = ttk.Checkbutton(self.clusframe, text="Analyse\nClustering", variable=clusteron, onvalue=True,
                                         offvalue=False, command=self.cluststatus)
         self.areaslide.config(state=tk.DISABLED)
         self.setarea.config(state=tk.DISABLED)
         self.cluscheck.grid(column=3, row=5, sticky=tk.E)
-        self.clusframe.grid(column=2, row=5, sticky=tk.W + tk.E + tk.N + tk.S, pady=5)
+        self.clusframe.grid(column=2, row=5, sticky=tk.W + tk.E + tk.N + tk.S, pady=5)"""
 
         # Save Selector
-        self.saveselect = tk.Button(master, height=2, text="Select Output", command=self.savesel)
-        self.saveselect.grid(column=1, row=7, rowspan=2, sticky=tk.E + tk.W, padx=5)
-        self.savefile = tk.Entry(master, textvariable=savedir)
+        self.saveselect = ttk.Button(self.corewrapper, text="Select Output", command=self.savesel)
+        self.saveselect.grid(column=1, row=3, sticky=tk.NSEW, padx=5, ipady=10)
+        self.savefile = ttk.Entry(self.corewrapper, textvariable=savedir)
         self.savefile.insert(tk.END, savedir)
         self.savefile.config(state=tk.DISABLED)
-        self.savefile.grid(column=2, row=7, sticky=tk.E + tk.W)
-        self.runbutton = tk.Button(master, height=2, text="Not Ready", bg="#cccccc", command=self.runscript,
-                                   state=tk.DISABLED)
-        self.runbutton.grid(column=3, row=7, rowspan=2, sticky=tk.E + tk.W, padx=5)
+        self.savefile.grid(column=2, row=3, sticky=tk.E + tk.W)
+        self.runbutton = ttk.Button(self.corewrapper, text="Not Ready", command=self.runscript,
+                                    state=tk.DISABLED)
+        self.runbutton.grid(column=3, row=3, sticky=tk.NSEW, padx=5)
 
     # TODO: Preview window as class
 
@@ -323,12 +398,11 @@ class CoreWindow:
         try:
             savedir = tkfiledialog.asksaveasfile(mode='w', defaultextension='.csv', initialfile='output.csv',
                                                  title='Save output file')
-            self.friendlysavename = savedir.name
             self.savefile.config(state=tk.NORMAL)
-            self.savefile.delete(0, tk.END)
-            self.savefile.insert(tk.END, self.friendlysavename)
+            self.savefile.delete(0, tk.END)  # TODO: Update this for read only fields rather than disabling them.
+            self.savefile.insert(tk.END, savedir.name)
             self.savefile.config(state=tk.DISABLED)
-            self.logevent("Data will save in: " + str(self.friendlysavename))
+            self.logevent("Data will save in: " + str(savedir.name))
             self.savestatus = True
             firstrun = True
             if self.dirstatus and self.savestatus:
@@ -353,6 +427,20 @@ class CoreWindow:
         else:
             self.logevent(
                 "Will analyse all files, you'll need to determine which images in the output are your desired channel")
+
+    def lock_ui(self):
+        if self.locked:
+            newstate = '!disabled'
+            self.locked = False
+        else:
+            newstate = 'disabled'
+            self.locked = True
+        for widget in self.master.winfo_children():
+            print(widget.children.values())
+            widget.state([newstate])
+        # TODO: Convert all to ttk frames.
+        # self.widgetslist = [self.logselect, self.currlog, self.prevsaveselect, self.prevdir, self.prevsavecheck, self.singlespotcheck, self.singleplanecheck, self.singleplaneentry]
+        return
 
     # Open preview window
     def openpreview(self):
@@ -579,11 +667,11 @@ def findmeta():
     if not chandet.get():
         colour = "Unknown"
         return False
-    for root, dirs, files in os.walk(directory):
-        for folder in dirs:
+    for scanroot, scandirs, scanfiles in os.walk(directory):
+        for folder in scandirs:
             if "MetaData" in folder:
                 app.logevent("Found MetaData folder, trying to pull image parameters...")
-                metadir = os.path.join(root, folder)
+                metadir = os.path.join(scanroot, folder)
                 for root, dirs, files in os.walk(metadir):
                     for file in files:
                         if file.endswith(".xml"):
@@ -624,52 +712,38 @@ def findmeta():
 
 
 # File List Generator
-def genfilelist(tgtdirectory, subdirectories):
-    return [os.path.normpath(os.path.join(root, f)) for root, dirs, files in os.walk(tgtdirectory) for f in files if
-            f.lower().endswith((".tif", ".tiff")) and not f.startswith(".") and (
-                    root == tgtdirectory or subdirectories)]
+def genfilelist(tgtdirectory, subdirectories, searchmode, kwd):
+    # Todo: File filtering
+    if searchmode == "Keyword":
+        filelist = [os.path.normpath(os.path.join(root, f)) for root, dirs, files in os.walk(tgtdirectory) for f in
+                    files if f.lower().endswith((".tif", ".tiff")) and not f.startswith(".") and kwd in f and (
+                            root == tgtdirectory or subdirectories)]
+    else:  # Metadata mode, grey mode, universal mode
+        filelist = [os.path.normpath(os.path.join(root, f)) for root, dirs, files in os.walk(tgtdirectory) for f in
+                    files if f.lower().endswith((".tif", ".tiff")) and not f.startswith(".") and (
+                            root == tgtdirectory or subdirectories)]
+    return filelist
 
 
 # Master File Cycler
 def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desiredcolourid, metastatus):
-    filelist = genfilelist(tgtdirectory, subdirectories)
+    filelist = genfilelist(tgtdirectory, subdirectories, searchmode, keyword)
     # TODO: ADD A PROGRESSBAR FUNCTION
     # TODO: Handle inappropriate filetypes better.
-    if not metastatus:
-        for file in filelist:
-            if stopper.wait():
-                app.logevent("Analysing: " + file)
-                data = cv2.imread(file, -1)
-                if activemode == "RGB" and data.dtype != "uint8":
-                    app.logevent("Not an RGB image, analysis skipped")
-                elif activemode == "RAW" and data.dtype == "uint8":
-                    app.logevent("Not a RAW image, analysis skipped")
-                else:
-                    try:
+    for file in filelist:
+        if stopper.wait():
+            app.logevent("Analysing: " + file)
+            data, filetype = open_file(file)
+            if filetype == "Invalid":
+                app.logevent("Invalid file type, analysis skipped")
+            else:
+                try:
+                    results = genstats(data, desiredcolourid, activemode, thresh, clusteron.get())
+                    app.datawriter(file, results)
+                except:
+                    app.logevent("Analysis failed, image may be corrupted")
 
-                        results = genstats(data, desiredcolourid, activemode, thresh, clusteron.get())
-                        app.datawriter(file, results)
-                    except:
-                        app.logevent("Analysis failed, image may be corrupted")
-    else:
-        extention = colourid + ".tif"
-        for file in filelist:
-            if stopper.wait():
-                if file.endswith(extention):
-                    app.logevent("Analysing: " + file)
-                    data = cv2.imread(file, -1)
-                    if activemode == "RGB" and data.dtype != "uint8":
-                        app.logevent("Not an RGB image, analysis skipped")
-                    elif activemode == "RAW" and data.dtype == "uint8":
-                        app.logevent("Not a RAW image, analysis skipped")
-                    else:
-                        # try:
-                        results = genstats(data, desiredcolourid, activemode, thresh, clusteron.get())
-                        app.datawriter(file, results)
-                        # except:
-                        #    app.logevent("Analysis failed, image may be corrupted")
-                else:
-                    pass
+    # TODO: Progress bar updater here.
     app.logevent("Script Complete!")
     app.dirselect.config(state=tk.NORMAL)
     app.subdircheck.config(state=tk.NORMAL)
@@ -692,6 +766,70 @@ def cyclefiles(stopper, tgtdirectory, activemode, thresh, subdirectories, desire
     savedir.close()
 
 
+def open_file(filepath, have_desired_colour, desired_colour_id):
+    from skimage.io import imread
+    inputarray = imread(filepath, as_grey=False, plugin="pil")
+    if inputarray.ndim == 2:
+        imagetype = "greyscale"
+    elif inputarray.ndim == 3:
+        dimensions = inputarray.shape[2]
+        if dimensions == 3:
+            imagetype = "RGB"
+        elif dimensions == 4:
+            imagetype = "RGBA"
+        else:
+            imagetype = "Invalid"
+            app.logevent("Invalid image format, skipping...")
+
+        if have_desired_colour:
+            inputarray = inputarray[::desired_colour_id]
+        else:  # Check if only one channel has data.
+            populated_channels = []
+            for i in range(0, 3):  # Scan RGB channels, not A. List channels containing data.
+                if np.max(inputarray[::i]) > 0:
+                    populated_channels += i
+            if len(populated_channels) == 1:  # Single colour RGB image, work on just the channel of interest
+                inputarray = inputarray[::populated_channels[0]]
+            elif len(populated_channels) == 0:  # All channels blank
+                app.logevent("Image appears to be blank, skipping")
+                imagetype = "Invalid"
+            else:  # Multi colour overlay
+                app.logevent("Image has multiple channels with data but no channel is specified for analysis, skipping")
+                imagetype = "Invalid"
+    else:
+        imagetype = "Invalid"
+    bit_depth_detect(inputarray)
+    return inputarray, imagetype
+
+
+def bit_depth_detect(imgarray):  # TODO: Update this for QuantiFish
+    global depthmap, currentdepth, scalemultiplier, maxrange, absmin, depthname, manualbitdepth
+    max_value = imgarray.max()
+    if manualbitdepth:
+        return
+    if max_value < 256:
+        depth = 0  # 8-bit
+    elif 256 <= max_value < 1024:
+        depth = 1  # 10-bit
+    elif 1024 <= max_value < 4096:
+        depth = 2  # 12-bit
+    else:
+        depth = 3  # 16-bit
+    if currentdepth < depth:
+        name, scalemultiplier, maxrange, absmin = depthmap[depth]
+        currentdepth = depth
+        app.logconfig.logevent("Detected bit depth: " + name)
+        app.regionconfig.threshold.config(to=maxrange)
+        app.spotconfig.threshold.config(to=maxrange)
+        app.regionconfig.default_thresh = absmin
+        app.spotconfig.default_thresh = absmin * 2
+        app.regionconfig.thresh.set(absmin)
+        app.spotconfig.thresh.set(absmin * 2)
+        depthname.set(name)
+    # Check if run is ongoing and alert if depth changes.
+    return
+
+
 # Data generators
 def genstats(inputimage, x, mode2, th, wantclusters):
     if mode2 == "RGB":
@@ -712,14 +850,15 @@ def genstats(inputimage, x, mode2, th, wantclusters):
         inputimage[mask] = 0
         intint = np.sum(inputimage)
         count = np.count_nonzero(inputimage)
+    results_pack = (intint, count, max_value, min_value)
     if wantclusters:
         numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil = getclusters(inputimage, th, mode2,
                                                                                                  x, minarea.get())
-        return intint, count, max_value, min_value, numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil
-    return intint, count, max_value, min_value
+        results_pack += (numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil)
+    return results_pack
 
 
-## Cluster Analysis
+# Cluster Analysis
 def getclusters(trgtimg, thresh, mode2, x, minimumarea):
     # Find and count peaks above threshold, assign labels to clusters of stainng.
     if mode2 == "RGB":
@@ -759,8 +898,6 @@ def getclusters(trgtimg, thresh, mode2, x, minimumarea):
         localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=thresh)
     targetpeaks, numtargetpeaks = ndi.measurements.label(localmax2)
     return numclusters, targetclusters, numpeaks, numtargetpeaks, intintfil, countfil
-
-    # Preview Window
 
 
 def savepreview():
