@@ -29,15 +29,7 @@ from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 from skimage.transform import rescale
 
-# Global Variables
 version = "2.0 beta"
-colour = "Unknown"  # By default we don't know which channel we're looking at.
-
-# Parameters for different display modes.
-depthmap = {"8-bit": (1, 256), "10-bit": (4, 1024), "12-bit": (16, 4096), "16-bit": (256, 65536)}
-# (ID, multiplier, maxrange)
-scalemultiplier, maxrange = depthmap["8-bit"]
-currentdepth = 8
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -58,39 +50,44 @@ def resource_path(relative_path):
 # Core UI
 class CoreWindow:
     def __init__(self, master):
-        self.imagetypefail = None
-        self.manualbitdepth = False
-        self.filelist = []
-        self.listlength = 0
-        self.currentpreviewfile = 0
         self.master = master
-        self.depthlocked = False
-        self.savestatus = False
-        self.dirstatus = False
-        self.about_window = None
-        self.previewwindow = None
-        self.file_list_window = None
-        self.about_contents = None
-        self.filelist_contents = None
-        self.previewer_contents = None
-        self.imlrg = None
-        self.imsml = None
-        self.resizefactor = 1
-        self.nooverlay = None
-        self.previewfile = None
-        self.preview = None
-        self.previewrgb = None
-        self.displayed = None
-        self.locked = False
-        self.file_list_window_active = False
-        self.currentchannel = "Unknown"
-        self.firstrun = True  # Do we need to write headers to the output file?
         self.master.wm_title("QuantiFish")
         self.master.iconbitmap(resource_path('resources/QFIcon'))
-        # self.master.resizable(width=False, height=False)
         self.master.grid_columnconfigure(1, minsize=100)
         self.master.grid_columnconfigure(2, weight=1, minsize=250)
         self.master.grid_columnconfigure(3, minsize=100)
+
+        # Parameters for different display modes.
+        self.depthmap = {"8-bit": (1, 256), "10-bit": (4, 1024), "12-bit": (16, 4096), "16-bit": (256, 65536)}
+        # (ID, multiplier, maxrange)
+        self.scalemultiplier, self.maxrange = self.depthmap["8-bit"]
+        self.currentdepth = 8
+        self.maxvalue = 0
+        self.depthlocked = False
+        # Setup needed variables
+        self.imagetypefail = None  # Is current image of a valid format?
+        self.filelist = []  # Master file list container
+        self.listlength = 0  # Length of file list needed for progress bar
+        self.dirstatus = False  # Is source directory set?
+        self.savestatus = False  # Is save file set?
+        self.about_window = None  # About window container
+        self.previewwindow = None  # Preview window container
+        self.file_list_window = None  # File list window container
+        self.about_contents = None  # About window contents
+        self.filelist_contents = None  # File list window contents
+        self.previewer_contents = None  # Preview window contents
+        self.imlrg = None  # Full size image in 8 bit depth for display
+        self.imsml = None  # Resized image in 8 bit depth for display
+        self.resizefactor = 1  # Factor to resize preview images by to fit window
+        self.previewfile = None  # Current preview file name
+        self.currentpreviewfile = 0  # File list index of the current open preview file
+        self.nooverlay = None  # Preview without overlay
+        self.preview = None  # Preview with overlay
+        self.previewrgb = None  # PIL image containing overlay
+        self.displayed = None  # Currently displayed preview type
+        self.locked = False  # Is the UI locked?
+        self.currentchannel = "Unknown"  # Which colour channel is being looked at
+        self.firstrun = True  # Do we need to write headers to the output file?
 
         # Core UI Containers
         self.header = ttk.Frame(self.master)
@@ -250,32 +247,7 @@ class CoreWindow:
         self.progressframe.grid_columnconfigure(2, weight=1)
         self.progressframe.grid(column=2, row=5, rowspan=2, sticky=tk.NSEW, padx=5)
 
-    def bitmode_select(self, *args):
-        global depthmap, scalemultiplier, maxrange
-        if self.bitcheck.current() == 0:
-            self.depthlocked = False
-            scalemultiplier, maxrange = depthmap['8-bit']
-        else:
-            self.depthlocked = True
-            depthnames = {1: '8-bit', 2: '10-bit', 3: '12-bit', 4: '16-bit'}
-            bdid = depthnames[self.bitcheck.current()]
-            scalemultiplier, maxrange = depthmap[bdid]
-
-    def validate_number(self, newvalue):
-        if newvalue in ("", "0"):
-            self.minarea.set(1)
-            return False
-        try:
-            if 0 < int(newvalue) < 100000:
-                return True
-            else:
-                self.minarea.set(99999)
-                return False
-        except ValueError:
-            self.logevent("Invalid entry")
-            self.minarea.set(1)
-            return False
-
+    # Display the about window.
     def about(self):
         x = self.master.winfo_rootx() + self.master.winfo_width()
         y = self.master.winfo_rooty()
@@ -287,6 +259,47 @@ class CoreWindow:
         self.about_window.iconbitmap(resource_path('resources/QFIcon'))
         self.about_window.geometry('%dx%d+%d+%d' % (150, 230, x, y))
 
+    # Prompt user to select directory.
+    def directselect(self):
+        self.close_previewer()
+        try:
+            newdirectory = tkfiledialog.askdirectory(title='Choose directory')
+            if newdirectory == "":
+                self.logevent("Directory not changed")
+                return
+            self.directory.set(newdirectory)
+            self.logevent("Images will be read from: " + str(newdirectory))
+            self.dirstatus = True
+            if self.dirstatus and self.savestatus:
+                self.runbutton.state(['!disabled'])
+                self.runbutton.config(text="Run")
+            if self.file_list_window:
+                self.filelist_thread()
+            if self.bitcheck.current() == 0:
+                self.depthlocked = False
+                app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
+        except (OSError, PermissionError, IOError):
+            self.logevent("Failed to set directory")
+
+    # Change bit depth manually.
+    def bitmode_select(self, *args):
+        if self.bitcheck.current() == 0:
+            self.depthlocked = False
+            app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
+        else:
+            self.depthlocked = True
+            depthnames = {1: '8-bit', 2: '10-bit', 3: '12-bit', 4: '16-bit'}
+            bdid = depthnames[self.bitcheck.current()]
+            app.scalemultiplier, app.maxrange = app.depthmap[bdid]
+
+    # Toggle inclusion of subdirectories
+    def subtoggle(self):
+        if self.subdiron.get():
+            self.logevent("Will process images in subdirectories")
+        else:
+            self.logevent("Will skip images in subdirectories")
+
+    # Open a file list window or refresh one that's open.
     def open_filelist_window(self):
         if self.file_list_window:
             self.filelist_contents.filelistbox.delete(0, tk.END)
@@ -303,11 +316,7 @@ class CoreWindow:
             self.file_list_window.protocol("WM_DELETE_WINDOW", app.close_filelist)
             self.file_list_window.geometry("700x500")
 
-    def close_filelist(self):
-        if self.file_list_window:
-            self.file_list_window.destroy()
-            self.file_list_window = None
-
+    # Generate preview of the file list.
     def preview_filelist(self):
         if self.dirstatus:
             self.open_filelist_window()
@@ -321,6 +330,7 @@ class CoreWindow:
             self.logevent("No image directory set, unable to generate file list.")
             self.filelist_contents.filelistlabel.config(text="0 files to be analysed")
 
+    # Run file scan on another thread.
     def filelist_thread(self):
         if self.list_stopper.is_set():
             self.list_stopper.clear()
@@ -329,6 +339,12 @@ class CoreWindow:
         filegenthread = threading.Thread(target=self.preview_filelist, args=())
         filegenthread.setDaemon(True)
         filegenthread.start()
+
+    # Close file list window.
+    def close_filelist(self):
+        if self.file_list_window:
+            self.file_list_window.destroy()
+            self.file_list_window = None
 
     # On changing file list filter type, update UI.
     def switch_file_filter(self):
@@ -349,17 +365,13 @@ class CoreWindow:
         for line in descriptors[newmode][1]:
             self.logevent(line)
 
+    # Toggle keyword filter input.
     def toggle_keyword(self):
         if self.filterkwd.get():
             self.textentry.state(['!disabled'])
             self.logevent("Will filter file list for selected keyword")
         else:
             self.textentry.state(['disabled'])
-
-    # Pushes message to log box.
-    def logevent(self, text):
-        self.logbox.insert(tk.END, str(text))
-        self.logbox.see(tk.END)
 
     # Detect threshold status and disable widgets if it's off.
     def thrstatus(self):
@@ -384,28 +396,21 @@ class CoreWindow:
             self.setarea.state(['disabled'])
         self.firstrun = True
 
-    # Prompt user to select directory.
-    def directselect(self):
-        global scalemultiplier, maxrange
-        self.close_previewer()
+    # Restrict minimum area input to numbers only.
+    def validate_number(self, newvalue):
+        if newvalue in ("", "0"):
+            self.minarea.set(1)
+            return False
         try:
-            newdirectory = tkfiledialog.askdirectory(title='Choose directory')
-            if newdirectory == "":
-                self.logevent("Directory not changed")
-                return
-            self.directory.set(newdirectory)
-            self.logevent("Images will be read from: " + str(newdirectory))
-            self.dirstatus = True
-            if self.dirstatus and self.savestatus:
-                self.runbutton.state(['!disabled'])
-                self.runbutton.config(text="Run")
-            if self.file_list_window_active:
-                self.filelist_thread()
-            if self.bitcheck.current() == 0:
-                self.depthlocked = False
-                scalemultiplier, maxrange = depthmap['8-bit']
-        except OSError:
-            self.logevent("Directory not set")
+            if 0 < int(newvalue) < 100000:
+                return True
+            else:
+                self.minarea.set(99999)
+                return False
+        except ValueError:
+            self.logevent("Invalid entry")
+            self.minarea.set(1)
+            return False
 
     # Prompt user for output file.
     def savesel(self):
@@ -422,48 +427,11 @@ class CoreWindow:
             if self.dirstatus and self.savestatus:
                 self.runbutton.state(['!disabled'])
                 self.runbutton.config(text="Run")
-        except:
-            self.logevent("Save file selection unsuccessful.")
-
-    # Toggle inclusion of subdirectories
-    def subtoggle(self):
-        if self.subdiron.get():
-            self.logevent("Will process images in subdirectories")
-        else:
-            self.logevent("Will skip images in subdirectories")
-
-    def ui_lock(self):
-        self.close_filelist()
-        self.close_previewer()
-        if self.locked:
-            newstate = '!disabled'
-        else:
-            newstate = 'disabled'
-        listwidgets = (self.dirselect, self.filelistbutton, self.currdir, self.bitcheck, self.subdircheck,
-                       self.nofilter, self.greyonly, self.detect, self.channelselect, self.textfilter, self.textentry,
-                       self.thrcheck, self.setthr, self.cluscheck, self.setarea, self.saveselect, self.savefile,
-                       self.previewbutton, self.refreshpreviewbutton)
-        for widget in listwidgets:
-            widget.state([newstate])
-        if self.locked:
-            if self.thron.get():
-                self.threslide.config(state=tk.NORMAL)
-                self.setthr.state(['!disabled'])
-            if self.clusteron.get():
-                self.setarea.state(['!disabled'])
-            if self.filterkwd.get():
-                self.textentry.state(['!disabled'])
-            self.runbutton.config(text="Run", command=app.runscript)
-            self.locked = False
-        else:
-            self.threslide.config(state=tk.DISABLED)
-            self.runbutton.config(text="Stop", command=app.abort)
-            self.locked = True
+        except (OSError, PermissionError, IOError):
+            self.logevent("Unable to set save file, destination file may be locked by another program.")
 
     # Open preview window
     def openpreview(self):
-        global pospixels
-        pospixels = tk.IntVar()
         app.list_stopper.set()
         self.filelist = genfilelist(self.directory.get(), app.list_stopper)
         self.currentpreviewfile = 0
@@ -472,38 +440,33 @@ class CoreWindow:
                 self.previewfile = self.filelist[self.currentpreviewfile]
             else:
                 self.previewfile = tkfiledialog.askopenfilename(filetypes=[('Tiff file', '*.tif')])
-
-        except:
+                if not self.previewfile:
+                    app.logevent("No preview file selected")
+                    return
+        except (OSError, PermissionError, IOError):
             self.logevent("Unable to open file, did you select a .tif image?")
             return
         self.logevent("Opening preview")
-        self.genpreview(self.previewfile, False, True)
-        #        try:
-        self.open_preview_window()
-        self.previewbutton.grid_forget()
 
-        self.refreshpreviewbutton.grid(column=1, row=5, sticky=tk.NSEW, padx=5)
+        try:
+            self.genpreview(self.previewfile, False, True)
+            self.open_preview_window()
+            self.previewbutton.grid_forget()
+            self.refreshpreviewbutton.grid(column=1, row=5, sticky=tk.NSEW, padx=5)
+            if self.imagetypefail:
+                self.previewer_contents.previewpane.config(image='', text="[Preview Not Available]")
+                self.previewer_contents.previewpane.image = None
+        except (ValueError, TypeError, OSError, PermissionError, IOError):
+            self.logevent("Failed to generate preview, sorry!")
 
-        if self.imagetypefail:
-            self.previewer_contents.previewpane.config(image='', text="[Preview Not Available]")
-            self.previewer_contents.previewpane.image = None
-
-        #   except Exception as e:
-        #       self.logevent("Failed to generate preview, sorry!")
-
-        # Thresholded Preview Generator
-
+    # Thresholded Preview Generator
     def genpreview(self, tgt, wantclusters, newimage):
-        global maxvalue, scalemultiplier
-
         def previewclusters(imgarray, minimumarea):
-            print(minimumarea)
             clusterim = imgarray[:, :, 1].copy()
             posmask = (clusterim > thold)
             tmask2 = (clusterim < thold)
             clusterim[tmask2] = 0
             simpleclusters, numclusters = ndi.measurements.label(clusterim)
-            print(simpleclusters.shape)
             areacounts = np.unique(simpleclusters, return_counts=True)
             positivegroups = areacounts[0][1:][areacounts[1][1:] > minimumarea]
             clustermask = np.isin(simpleclusters, positivegroups)
@@ -522,48 +485,41 @@ class CoreWindow:
             if imagetype == "Invalid":
                 self.imagetypefail = True
                 return
-            maxvalue = np.amax(imfile[:, :])
+            self.maxvalue = np.amax(imfile[:, :])
             bit_depth_detect(imfile)
-            imfile = (imfile / scalemultiplier).astype('uint8')
+            imfile = (imfile / app.scalemultiplier).astype('uint8')
             im = imfile.copy()  # Clone file for work
             # Reduce preview spawner to 8-bit range
             if imfile.shape[1] > 750:
                 self.resizefactor = 750 / im.shape[1]
                 self.imsml = rescale(im, self.resizefactor)
                 self.imsml = (self.imsml * 255).astype('uint8')
-            self.imlrg = np.repeat(imfile[:, :, np.newaxis], 3, axis=2)
-            self.imsml = np.repeat(self.imsml[:, :, np.newaxis], 3, axis=2)
+            self.imlrg = np.repeat(imfile[:, :, np.newaxis], 3, axis=2)  # Full size 256 array
+            self.imsml = np.repeat(self.imsml[:, :, np.newaxis], 3, axis=2)  # Scaled 256 array
             nooverlay = Image.fromarray(self.imsml, 'RGB')
             self.nooverlay = ImageTk.PhotoImage(nooverlay)
-
-        # self.imsml = resized 256 array
-        # self.imlrg = full size 256 arrauy
-
         thold = self.threshold.get()
-
         if not wantclusters:
             im2 = self.imsml.copy()  # Clone the core image to work with it.
             mask = (im2[:, :, 1] > thold)
             im2[mask] = (0, 191, 255)
         else:  # Clustering needed
-            print(self.resizefactor)
             try:  # Try running the full size image.
                 im2 = previewclusters(self.imlrg, self.minarea.get())
             except MemoryError:  # Else revert to smaller preview
                 app.logevent("Insufficient memory to preview clusters, using reduced resolution (less accurate).")
                 newarea = self.minarea.get() * (self.resizefactor ** 2)
                 im2 = previewclusters(self.imsml, newarea)
-
         self.previewrgb = Image.fromarray(im2, 'RGB')
         self.preview = ImageTk.PhotoImage(self.previewrgb)
         self.displayed = "overlay"
 
-
-
+    # Trigger preview update if parameters changed.
     def preview_update(self, *args):
         if self.previewwindow and not self.imagetypefail:
             self.previewer_contents.regenpreview("nochange")
 
+    # Opens Preview Window
     def open_preview_window(self):
         x = self.master.winfo_rootx()
         y = self.master.winfo_rooty()
@@ -599,33 +555,19 @@ class CoreWindow:
             headings = (
                 'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Displayed Threshold',
                 'Computed Threshold', 'Channel')
-        try:
-            with open(self.savedir.get(), 'w', newline="\n", encoding="utf-8") as f:
-                writer(f).writerow(headings)
-                self.logevent("Save file created successfully")
-        except:
-            self.logevent("Unable to create save file")
+        with open(self.savedir.get(), 'w', newline="\n", encoding="utf-8") as f:
+            writer(f).writerow(headings)
+            self.logevent("Save file created successfully")
 
     # Exports data to csv file
     def datawriter(self, exportpath, exportdata):
-        writeme = (exportpath,) + exportdata + (
-        self.threshold.get(), self.threshold.get() * scalemultiplier, app.currentchannel)
+        writeme = (exportpath,) + exportdata + (self.threshold.get(), self.threshold.get() * app.scalemultiplier,
+                                                app.currentchannel)
         try:
             with open(self.savedir.get(), 'a', newline="\n", encoding="utf-8") as f:
                 writer(f).writerow(writeme)
-        except Exception as e:
-            print(e)
+        except (OSError, PermissionError, IOError):
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
-
-    def increment_progress(self):
-        self.listlength = len(app.filelist)
-        self.progressbar.config(maximum=self.listlength)
-        self.progress_var.set(self.progress_var.get() + 1)
-        self.progress_text.set('File %(fileid)02d of %(totalfiles)02d' % {'fileid': self.progress_var.get(),
-                                                                          'totalfiles': self.listlength})
-        if self.listlength == self.progress_var.get():
-            self.progress_text.set('Completed analysis of %(totalfiles)02d files' % {'totalfiles': self.listlength})
-        return
 
     # Script Starter
     def runscript(self):
@@ -637,7 +579,7 @@ class CoreWindow:
             try:
                 self.headers()
                 self.firstrun = False
-            except:
+            except (OSError, PermissionError, IOError):
                 self.logevent("Unable to write to output file")
         try:  # Setup thread for analysis to run in
             global mprokilla
@@ -646,17 +588,62 @@ class CoreWindow:
             mpro = threading.Thread(target=cyclefiles, args=(mprokilla, self.directory.get()))
             mpro.setDaemon(True)
             mpro.start()
-        except Exception as e:
-            print(e)
+        except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
+            app.logevent("Error initiating script, aborting")
             self.ui_lock()
+
+    # Toggle locking of UI during run.
+    def ui_lock(self):
+        self.close_filelist()
+        self.close_previewer()
+        if self.locked:
+            newstate = '!disabled'
+        else:
+            newstate = 'disabled'
+        listwidgets = (self.dirselect, self.filelistbutton, self.currdir, self.bitcheck, self.subdircheck,
+                       self.nofilter, self.greyonly, self.detect, self.channelselect, self.textfilter, self.textentry,
+                       self.thrcheck, self.setthr, self.cluscheck, self.setarea, self.saveselect, self.savefile,
+                       self.previewbutton, self.refreshpreviewbutton)
+        for widget in listwidgets:
+            widget.state([newstate])
+        if self.locked:
+            if self.thron.get():
+                self.threslide.config(state=tk.NORMAL)
+                self.setthr.state(['!disabled'])
+            if self.clusteron.get():
+                self.setarea.state(['!disabled'])
+            if self.filterkwd.get():
+                self.textentry.state(['!disabled'])
+            self.runbutton.config(text="Run", command=app.runscript)
+            self.locked = False
+        else:
+            self.threslide.config(state=tk.DISABLED)
+            self.runbutton.config(text="Stop", command=app.abort)
+            self.locked = True
+
+    # Update Progress Bar
+    def increment_progress(self):
+        self.listlength = len(app.filelist)
+        self.progressbar.config(maximum=self.listlength)
+        self.progress_var.set(self.progress_var.get() + 1)
+        self.progress_text.set('File %(fileid)02d of %(totalfiles)02d' % {'fileid': self.progress_var.get(),
+                                                                          'totalfiles': self.listlength})
+        if self.listlength == self.progress_var.get():
+            self.progress_text.set('Completed analysis of %(totalfiles)02d files' % {'totalfiles': self.listlength})
+        return
 
     # Stops a running script
     def abort(self):
         try:
             mprokilla.clear()
             self.logevent("Aborted run")
-        except:
+        except AttributeError:
             self.logevent("Failed to stop script, eep! Try restarting the program.")
+
+    # Pushes message to log box.
+    def logevent(self, text):
+        self.logbox.insert(tk.END, str(text))
+        self.logbox.see(tk.END)
 
 
 # File List Generator
@@ -687,24 +674,19 @@ def genfilelist(tgtdirectory, aborter):
                 if imgtest.mode.startswith(allowed_formats):
                     filteredfilelist.append(file)
                 imgtest.close()
-            except OSError as e:
+            except (OSError, PermissionError, IOError):
                 app.logevent("ERROR: Unable to read " + file)
                 app.logevent("File may be corrupted. Will skip during analysis.")
-                print(e)
-            except Exception as e:
-                app.logevent("Unhandled Error, skipping file")
     app.list_stopper.clear()
     return filteredfilelist
 
 
 # Master File Cycler
 def cyclefiles(stopper, tgtdirectory):
-    global scalemultiplier, maxrange
     app.progress_var.set(0)
     app.list_stopper.set()
-    thresh = app.threshold.get() * scalemultiplier
+    thresh = app.threshold.get() * app.scalemultiplier
     app.filelist = genfilelist(tgtdirectory, app.list_stopper)
-    # TODO: Handle inappropriate filetypes better.
     for file in app.filelist:
         if stopper.is_set():
             app.increment_progress()
@@ -714,12 +696,12 @@ def cyclefiles(stopper, tgtdirectory):
                 app.logevent("Invalid file type, analysis skipped")
             else:
                 if not app.depthlocked:
-                    thresh = app.threshold.get() * scalemultiplier
+                    thresh = app.threshold.get() * app.scalemultiplier
                     app.depthlocked = True
                 try:
                     results = genstats(imagedata, thresh, app.clusteron.get())
                     app.datawriter(file, results)
-                except:
+                except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
                     app.logevent("Analysis failed, image may be corrupted")
         else:
             app.progress_var.set(app.listlength)
@@ -727,7 +709,7 @@ def cyclefiles(stopper, tgtdirectory):
     app.ui_lock()
     if app.bitcheck.current() == 0:
         app.depthlocked = False
-        scalemultiplier, maxrange = depthmap['8-bit']
+        app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
 
     app.logevent("Analysis Complete!")
 
@@ -777,10 +759,10 @@ def open_file(filepath):
     return inputarray, imagetype
 
 
+# Detect bit depth of the current image.
 def bit_depth_detect(imgarray):
-    global depthmap, currentdepth, scalemultiplier, maxrange, depthname
     max_value = imgarray.max()
-    if app.manualbitdepth or app.depthlocked:
+    if app.depthlocked:
         return
     if max_value < 256:
         depth = 8
@@ -794,9 +776,9 @@ def bit_depth_detect(imgarray):
     else:
         depth = 16
         depthname = '16-bit'
-    if currentdepth < depth:
-        scalemultiplier, maxrange, = depthmap[depthname]
-        currentdepth = depth
+    if app.currentdepth < depth:
+        app.scalemultiplier, app.maxrange, = app.depthmap[depthname]
+        app.currentdepth = depth
         app.logevent("Detected bit depth: " + depthname)
     return
 
@@ -839,6 +821,7 @@ def getclusters(trgtimg, threshold, minimumarea):
     return numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil
 
 
+# Save the preview image
 def savepreview():
     try:
         previewsavename = tkfiledialog.asksaveasfile(mode="w", defaultextension=".tif",
@@ -846,9 +829,8 @@ def savepreview():
         app.previewrgb.save(previewsavename.name)
         app.logevent("Preview Saved")
         previewsavename.close()
-    except Exception as e:
+    except (NameError, OSError, PermissionError, IOError):
         app.logevent("Unable to save file, is this location valid?")
-        print(e)
 
 
 class PreviewWindow:
@@ -859,7 +841,6 @@ class PreviewWindow:
         style.configure('imgwindow.TLabel', anchor='center')
         self.previewwindow = ttk.Frame(self.master)
         self.previewtitle = ttk.Label(self.previewwindow, text=("..." + app.previewfile[-100:]))
-
         if not app.imagetypefail:
             self.previewpane = ttk.Label(self.previewwindow, style='imgwindow.TLabel', image=app.preview)
             self.previewpane.image = app.preview
@@ -889,7 +870,6 @@ class PreviewWindow:
         self.autothresh = ttk.Button(self.previewcontrols, style='preview.TButton', text="Auto\nThreshold",
                                      command=lambda: self.autothreshold())
 
-        # TODO: Replace with current pixel value
         self.currpixel = tk.IntVar()
         self.currpixel.set(0)
         self.pixelbox = ttk.LabelFrame(self.previewcontrols, text="Pixel Value")
@@ -917,13 +897,12 @@ class PreviewWindow:
         if not self.previewwindow:
             return
         if mode == "cluster":
-            # try:
-            app.genpreview(app.previewfile, True, newfile)
-            self.previewpane.config(image=app.preview)
-            self.previewpane.image = app.preview
-            # except Exception as e:
-            #    app.logevent("Error generating preview file")
-            #    print(e)
+            try:
+                app.genpreview(app.previewfile, True, newfile)
+                self.previewpane.config(image=app.preview)
+                self.previewpane.image = app.preview
+            except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError, MemoryError):
+                app.logevent("Error generating preview file")
             self.overlaytoggle.state(['active'])
             app.displayed = "clusters"
             return
@@ -945,8 +924,7 @@ class PreviewWindow:
                 else:
                     self.nextpreviewbutton.state(['disabled'])
                     self.prevpreviewbutton.state(['disabled'])
-            except Exception as e:
-                print(e)
+            except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError, MemoryError):
                 app.logevent("Unable to open file, did you select a .tif image?")
                 self.previewpane.config(text="[Preview Not Available]", image='')
                 self.previewpane.image = None
@@ -972,46 +950,26 @@ class PreviewWindow:
             app.previewfile = app.filelist[app.currentpreviewfile]
             self.previewtitle.config(text=("..." + app.previewfile[-100:]))
 
-        # try:
-        app.genpreview(app.previewfile, False, newfile)
-        # TODO: Re-enable preview failcheck
-        # except Exception as e:
-        #    app.logevent("Error generating preview file")
-        #    print(e)
-        #    return
+        try:
+            app.genpreview(app.previewfile, False, newfile)
+        except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError, MemoryError):
+            app.logevent("Error generating preview file")
+            return
         if not app.imagetypefail:  # Only show preview if the image is the right type.
             self.previewpane.config(image=app.preview)
             self.previewpane.image = app.preview
+            if app.previewwindow.winfo_reqheight() + 10 < 610:
+                reqh = 610
+            else:
+                reqh = app.previewwindow.winfo_reqheight() + 10
+            app.previewwindow.geometry('%dx%d' % (app.previewwindow.winfo_reqwidth() + 10, reqh))
         else:
             self.previewpane.config(image='', text="[Preview Not Available]")
             self.previewpane.image = None
-        if app.previewwindow.winfo_reqheight() + 10 < 610:
-            reqh = 610
-        else:
-            reqh = app.previewwindow.winfo_reqheight() + 10
-        app.previewwindow.geometry('%dx%d' % (app.previewwindow.winfo_reqwidth() + 10, reqh))
+
         app.displayed = "overlay"
 
         # Get pixel intensity under the mouse pointer.
-
-    def hover_pixel(self, event):
-        if not app.imagetypefail:
-            ymax, xmax, axes = app.imsml.shape
-            if event.y < ymax and event.x < xmax:
-                pixel = app.imsml[event.y][event.x][0]
-                self.currpixel.set(pixel)
-        else:
-            self.currpixel.set(0)
-
-    # TODO: Proper exception handling
-
-    # Automatically generate a threshold value.
-    def autothreshold(self):
-        try:
-            app.threshold.set(maxvalue + 1)
-            self.regenpreview("nochange")
-        except:
-            pass
 
     # Switch between overlay and original image in preview
     def switchpreview(self, cluster):
@@ -1032,7 +990,20 @@ class PreviewWindow:
             self.regenpreview("cluster")
             self.overlaytoggle.state(['pressed'])
 
-    # TODO: Fix self assignments which aren't needed.
+    # Get value of pixel the cursor is over.
+    def hover_pixel(self, event):
+        if not app.imagetypefail:
+            ymax, xmax, axes = app.imsml.shape
+            if event.y < ymax and event.x < xmax:
+                pixel = app.imsml[event.y - 2][event.x - 2][0]  # Correct for border around label.
+                self.currpixel.set(pixel)
+        else:
+            self.currpixel.set(0)
+
+    # Automatically generate a threshold value.
+    def autothreshold(self):
+        app.threshold.set(app.maxvalue + 1)
+        self.regenpreview("nochange")
 
 
 # About Window
@@ -1081,5 +1052,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# TODO: Preview save function
