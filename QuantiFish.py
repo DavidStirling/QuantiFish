@@ -29,7 +29,7 @@ from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 from skimage.transform import rescale
 
-version = "2.0 beta"
+version = "2.0 beta 1"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -210,8 +210,8 @@ class CoreWindow:
                                  validatecommand=self.areavalidate, width=5, justify=tk.CENTER)
         self.setarea.state(['disabled'])
         self.cluscheck.grid(column=1, row=1, padx=10)
-        self.setsizelabel.grid(column=3, row=1)
-        self.setarea.grid(column=4, row=1, padx=(0, 10))
+        self.setsizelabel.grid(column=3, row=1, pady=(0, 5))
+        self.setarea.grid(column=4, row=1, padx=(0, 10), pady=(0, 5))
         self.clusterbox.grid(column=2, row=3, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
         self.clusterbox.grid_columnconfigure(2, weight=1)
 
@@ -949,7 +949,6 @@ class PreviewWindow:
                 self.prevpreviewbutton.state(['!disabled'])
             app.previewfile = app.filelist[app.currentpreviewfile]
             self.previewtitle.config(text=("..." + app.previewfile[-100:]))
-
         try:
             app.genpreview(app.previewfile, False, newfile)
         except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError, MemoryError):
@@ -962,11 +961,11 @@ class PreviewWindow:
                 reqh = 610
             else:
                 reqh = app.previewwindow.winfo_reqheight() + 10
-            app.previewwindow.geometry('%dx%d' % (app.previewwindow.winfo_reqwidth() + 10, reqh))
+            if reqh > app.previewwindow.winfo_height():
+                app.previewwindow.geometry('%dx%d' % (app.previewwindow.winfo_reqwidth() + 10, reqh))
         else:
             self.previewpane.config(image='', text="[Preview Not Available]")
             self.previewpane.image = None
-
         app.displayed = "overlay"
 
         # Get pixel intensity under the mouse pointer.
