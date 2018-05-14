@@ -716,12 +716,12 @@ def cyclefiles(stopper, tgtdirectory):
 
 # Open a file and convert it into a single channel image.
 def open_file(filepath):
-    from skimage.io import imread
     currentmode = app.filtermode.get()
     chandef = {"Detect": 0, "Blue": 3, "Green": 2, "Red": 1}
     channelids = ["Red", "Green", "Blue"]
     desiredcolour = chandef[app.channelselect.get()]
-    inputarray = imread(filepath, as_grey=False, plugin="pil")
+    inputarray = Image.open(filepath)
+    inputarray = np.array(inputarray)
     if inputarray.ndim == 2:
         imagetype = "greyscale"
         app.currentchannel = "Grey"
