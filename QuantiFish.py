@@ -29,7 +29,7 @@ from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 from skimage.transform import rescale
 
-version = "2.0 beta 1"
+version = "2.0 beta 3"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -64,6 +64,7 @@ class CoreWindow:
         self.currentdepth = 8
         self.maxvalue = 0
         self.depthlocked = False
+        self.tempdepthlock = False
         # Setup needed variables
         self.imagetypefail = None  # Is current image of a valid format?
         self.filelist = []  # Master file list container
@@ -257,11 +258,12 @@ class CoreWindow:
         self.about_window.focus_set()
         self.about_window.grab_set()
         self.about_window.iconbitmap(resource_path('resources/QFIcon'))
-        self.about_window.geometry('%dx%d+%d+%d' % (150, 230, x, y))
+        self.about_window.geometry('%dx%d+%d+%d' % (200, 230, x, y))
 
     # Prompt user to select directory.
     def directselect(self):
         self.close_previewer()
+        bit_depth_reset()
         try:
             newdirectory = tkfiledialog.askdirectory(title='Choose directory')
             if newdirectory == "":
@@ -283,6 +285,7 @@ class CoreWindow:
 
     # Change bit depth manually.
     def bitmode_select(self, *args):
+        self.close_previewer()
         if self.bitcheck.current() == 0:
             self.depthlocked = False
             app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
@@ -332,6 +335,7 @@ class CoreWindow:
 
     # Run file scan on another thread.
     def filelist_thread(self):
+        self.close_previewer()
         if self.list_stopper.is_set():
             self.list_stopper.clear()
             time.sleep(0.5)
@@ -351,6 +355,8 @@ class CoreWindow:
         # Modes: None, Greyscale, RGBDetect
         # Descriptor Parts:
         # textentrystate, channelselectstate, logdescription
+        self.close_previewer()
+        bit_depth_reset()
         newmode = self.filtermode.get()
         descriptors = {
             0: ('disabled', ('File filter disabled, all files in target directory will be processed.',
@@ -695,9 +701,9 @@ def cyclefiles(stopper, tgtdirectory):
             if filetype == "Invalid":
                 app.logevent("Invalid file type, analysis skipped")
             else:
-                if not app.depthlocked:
+                if not app.depthlocked and not app.tempdepthlock:
                     thresh = app.threshold.get() * app.scalemultiplier
-                    app.depthlocked = True
+                    app.tempdepthlock = True
                 try:
                     results = genstats(imagedata, thresh, app.clusteron.get())
                     app.datawriter(file, results)
@@ -708,8 +714,7 @@ def cyclefiles(stopper, tgtdirectory):
             app.progress_text.set('Analysis Aborted')
     app.ui_lock()
     if app.bitcheck.current() == 0:
-        app.depthlocked = False
-        app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
+        bit_depth_reset()
 
     app.logevent("Analysis Complete!")
 
@@ -762,7 +767,7 @@ def open_file(filepath):
 # Detect bit depth of the current image.
 def bit_depth_detect(imgarray):
     max_value = imgarray.max()
-    if app.depthlocked:
+    if app.depthlocked or app.tempdepthlock:
         return
     if max_value < 256:
         depth = 8
@@ -781,6 +786,16 @@ def bit_depth_detect(imgarray):
         app.currentdepth = depth
         app.logevent("Detected bit depth: " + depthname)
     return
+
+
+# Reset Bit Depth
+def bit_depth_reset():
+    if app.tempdepthlock:
+        # Reset bit depth.
+        app.tempdepthlock = False  # Depth was only locked for the run.
+        app.scalemultiplier, app.maxrange = app.depthmap["8-bit"]
+        app.currentdepth = 8
+        app.maxvalue = 0
 
 
 # Data generators
@@ -908,6 +923,7 @@ class PreviewWindow:
             return
         elif mode == "change":
             newfile = True
+            bit_depth_reset()
             try:
                 app.previewfile = os.path.normpath(tkfiledialog.askopenfilename(filetypes=[('Tiff file', '*.tif')]))
                 self.previewtitle.config(text=("..." + app.previewfile[-100:]))
@@ -1001,7 +1017,7 @@ class PreviewWindow:
 
     # Automatically generate a threshold value.
     def autothreshold(self):
-        app.threshold.set(app.maxvalue + 1)
+        app.threshold.set(int(app.maxvalue / app.scalemultiplier) + 1)
         self.regenpreview("nochange")
 
 
