@@ -21,15 +21,17 @@ import time
 import tkinter as tk
 import tkinter.filedialog as tkfiledialog
 from csv import writer
+from tkinter import messagebox
 from tkinter import ttk
 
 import numpy as np
 from PIL import Image, ImageTk
 from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
+from skimage.measure import regionprops
 from skimage.transform import rescale
 
-version = "2.0 beta 3"
+version = "2.0 RC1"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -123,7 +125,7 @@ class CoreWindow:
 
         # Directory Select/File List Preview Buttons
         self.dirbuttons = ttk.Frame(self.corewrapper)
-        self.dirselect = ttk.Button(self.dirbuttons, text="Set Directory", command=self.directselect)
+        self.dirselect = ttk.Button(self.dirbuttons, text="Set Input Directory", command=self.directselect)
         self.filelistbutton = ttk.Button(self.dirbuttons, text="Generate File List", command=self.filelist_thread)
         self.dirselect.pack(fill=tk.X)
         self.filelistbutton.pack(fill=tk.X)
@@ -200,30 +202,60 @@ class CoreWindow:
         self.clusteron = tk.BooleanVar()
         self.clusteron.set(False)
         self.minarea = tk.IntVar()
-        self.minarea.set(10)
+        self.minarea.set(1)
+        self.clustersave = tk.BooleanVar()
+        self.clustersave.set(False)
+        self.clusfilename = tk.StringVar()
+        self.clusfilename.set('clusters')
         self.clusterbox = ttk.LabelFrame(self.corewrapper, relief=tk.GROOVE, text="Cluster Analysis")
-        self.cluscheck = ttk.Checkbutton(self.clusterbox, text="Search for large areas of staining",
+        self.cluscheck = ttk.Checkbutton(self.clusterbox, text="Analyse Clustering",
                                          variable=self.clusteron,
                                          onvalue=True, offvalue=False, command=self.cluststatus)
-        self.setsizelabel = ttk.Label(self.clusterbox, text="Minimum Cluster Size:")
+        self.setsizelabel = ttk.Label(self.clusterbox, text="Minimum Size:")
         self.areavalidate = (self.clusterbox.register(self.validate_number), '%P')
         self.setarea = ttk.Entry(self.clusterbox, textvariable=self.minarea, validate='focusout',
                                  validatecommand=self.areavalidate, width=5, justify=tk.CENTER)
+        self.clustersavecheck = ttk.Checkbutton(self.clusterbox, text="Save cluster data:",
+                                                variable=self.clustersave,
+                                                onvalue=True, offvalue=False, command=self.singleclusterstatus)
+        self.clusnamevalidate = (self.clusterbox.register(self.validate_text), '%P', 'cluster')
+        self.clusterfilenamebox = ttk.Entry(self.clusterbox, textvariable=self.clusfilename, validate='focusout',
+                                            validatecommand=self.clusnamevalidate, width=8, justify=tk.CENTER)
+        self.clusterextension = ttk.Label(self.clusterbox, text=".csv")
         self.setarea.state(['disabled'])
-        self.cluscheck.grid(column=1, row=1, padx=10)
-        self.setsizelabel.grid(column=3, row=1, pady=(0, 5))
-        self.setarea.grid(column=4, row=1, padx=(0, 10), pady=(0, 5))
+        self.clustersavecheck.state(['disabled'])
+        self.clusterfilenamebox.state(['disabled'])
+        self.cluscheck.grid(column=1, row=1, padx=(10, 5))
+        self.setsizelabel.grid(column=3, row=1)
+        self.setarea.grid(column=4, row=1, padx=(0, 5))  # padx=(0, 10), pady=(0, 5))
+        self.clustersavecheck.grid(column=7, row=1)
+        self.clusterfilenamebox.grid(column=8, row=1)
+        self.clusterextension.grid(column=9, row=1, sticky=tk.W, padx=(0, 10))
         self.clusterbox.grid(column=2, row=3, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
         self.clusterbox.grid_columnconfigure(2, weight=1)
+        self.clusterbox.grid_columnconfigure(5, weight=1)
 
         # Save Selector
+        self.savefilename = tk.StringVar()
+        self.savefilename.set('output')
         self.savedir = tk.StringVar()
-        self.savedir.set("Select a file in which to save the output")
-        self.saveselect = ttk.Button(self.corewrapper, text="Set Output File", command=self.savesel)
-        self.savefile = ttk.Entry(self.corewrapper, textvariable=self.savedir)
+        self.savedir.set("Select a directory in which to save the output file")
+        self.saveselect = ttk.Button(self.corewrapper, text="Set Output Directory", command=self.savesel)
+        self.savefileframe = ttk.Frame(self.corewrapper)
+        self.savefile = ttk.Entry(self.savefileframe, textvariable=self.savedir)
         self.savefile.state(['readonly'])
+        self.savenamevalidate = (self.savefileframe.register(self.validate_text), '%P', 'main')
+        self.savefilenamebox = ttk.Entry(self.savefileframe, textvariable=self.savefilename, validate='focusout',
+                                         validatecommand=self.savenamevalidate, width=8, justify=tk.CENTER)
+        self.savefileextension = ttk.Label(self.savefileframe, text=".csv")
         self.saveselect.grid(column=1, row=4, sticky=tk.NSEW, padx=5)
-        self.savefile.grid(column=2, row=4, sticky=tk.E + tk.W, padx=5)
+
+        self.savefile.grid(column=1, row=1, columnspan=3, sticky=tk.NSEW, padx=5)
+        self.savefilenamebox.grid(column=4, row=1)
+        self.savefileextension.grid(column=5, row=1, sticky=tk.W, padx=(0, 10))
+
+        self.savefileframe.grid(column=2, row=4, sticky=tk.E + tk.W, padx=5)
+        self.savefileframe.grid_columnconfigure(2, weight=1)
 
         # Preview/Run Buttons
         self.previewbutton = ttk.Button(self.corewrapper, text="Preview", command=self.openpreview)
@@ -275,6 +307,7 @@ class CoreWindow:
             if self.dirstatus and self.savestatus:
                 self.runbutton.state(['!disabled'])
                 self.runbutton.config(text="Run")
+                self.progress_text.set("Ready")
             if self.file_list_window:
                 self.filelist_thread()
             if self.bitcheck.current() == 0:
@@ -395,11 +428,26 @@ class CoreWindow:
             self.logevent("Cluster Analysis Enabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.setarea.state(['!disabled'])
-            self.minarea.set(10)
+            self.clustersavecheck.state(['!disabled'])
+            if self.clustersave.get():
+                self.clusterfilenamebox.state(['!disabled'])
+            self.minarea.set(1)
         else:
             self.logevent("Cluster Analysis Disabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.setarea.state(['disabled'])
+            self.clustersavecheck.state(['disabled'])
+            self.clusterfilenamebox.state(['disabled'])
+        self.firstrun = True
+
+    def singleclusterstatus(self):
+        if self.clustersave.get():
+            self.logevent("Data for each cluster will be saved in a seperate file.")
+            self.clusterfilenamebox.state(['!disabled'])
+            self.clusfilename.set('clusters')
+        else:
+            self.logevent("Only cluster summary data per fish will be saved.")
+            self.clusterfilenamebox.state(['disabled'])
         self.firstrun = True
 
     # Restrict minimum area input to numbers only.
@@ -418,22 +466,41 @@ class CoreWindow:
             self.minarea.set(1)
             return False
 
+    # Restrict filename input to text only.
+    def validate_text(self, newvalue, destination):
+        valid_chars = '-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        if not any(char not in valid_chars for char in newvalue):
+            self.firstrun = True
+            if destination == "cluster":
+                if self.savefilename.get() != newvalue:
+                    return True
+            else:
+                if self.clusfilename.get() != newvalue:
+                    return True
+        if destination == "cluster":
+            self.clusfilename.set('clusters')
+        else:
+            self.savefilename.set('output')
+        app.logevent("Invalid file name")
+        return False
+
     # Prompt user for output file.
     def savesel(self):
         try:
-            newsavedir = tkfiledialog.asksaveasfile(mode='w', defaultextension='.csv', initialfile='output.csv',
-                                                    title='Save output file')
+            newsavedir = tkfiledialog.askdirectory(title='Choose output directory')
             if not newsavedir:
-                self.logevent("Save file not set")
+                self.logevent("Save directory not set")
                 return
-            self.savedir.set(newsavedir.name)
-            self.logevent("Data will save in: " + str(newsavedir.name))
+            self.savedir.set(newsavedir)
+            self.logevent("Data will save in: " + str(newsavedir))
             self.savestatus = True
             self.firstrun = True
             if self.dirstatus and self.savestatus:
                 self.runbutton.state(['!disabled'])
                 self.runbutton.config(text="Run")
+                self.progress_text.set("Ready")
         except (OSError, PermissionError, IOError):
+            self.logevent("Failed to set save directory")
             self.logevent("Unable to set save file, destination file may be locked by another program.")
 
     # Open preview window
@@ -561,16 +628,49 @@ class CoreWindow:
             headings = (
                 'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Displayed Threshold',
                 'Computed Threshold', 'Channel')
-        with open(self.savedir.get(), 'w', newline="\n", encoding="utf-8") as f:
+        savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
+        if os.path.isfile(savefile):
+            if not messagebox.askokcancel("File Already Exists",
+                                          "The selected save file already exists, is it ok to overwrite it?"):
+                return False
+        with open(savefile, 'w', newline="\n", encoding="utf-8") as f:
             writer(f).writerow(headings)
-            self.logevent("Save file created successfully")
+            self.logevent("Output file created successfully")
+        return True
 
     # Exports data to csv file
     def datawriter(self, exportpath, exportdata):
         writeme = (exportpath,) + exportdata + (self.threshold.get(), self.threshold.get() * app.scalemultiplier,
                                                 app.currentchannel)
         try:
-            with open(self.savedir.get(), 'a', newline="\n", encoding="utf-8") as f:
+            savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
+            with open(savefile, 'a', newline="\n", encoding="utf-8") as f:
+                writer(f).writerow(writeme)
+        except (OSError, PermissionError, IOError):
+            self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
+
+    def clusterheaders(self):
+        headings = (
+            'File', 'Cluster ID', 'Cluster Location', 'Cluster Area', 'Maximum Intensity', 'Minimum Intensity',
+            'Average Intensity', 'Integrated Intensity', 'Displayed Threshold', 'Computed Threshold', 'Channel')
+
+        savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
+        if os.path.isfile(savefile):
+            if not messagebox.askokcancel("File Already Exists",
+                                          "The save file for clusters already exists, is it ok to overwrite it?"):
+                return False
+        with open(savefile, 'w', newline="\n", encoding="utf-8") as f:
+            writer(f).writerow(headings)
+            self.logevent("Single cluster output file created successfully")
+        return True
+
+    # Exports data to csv file
+    def clusterwriter(self, exportpath, exportdata):
+        writeme = (exportpath,) + exportdata + (self.threshold.get(), self.threshold.get() * app.scalemultiplier,
+                                                app.currentchannel)
+        try:
+            savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
+            with open(savefile, 'a', newline="\n", encoding="utf-8") as f:
                 writer(f).writerow(writeme)
         except (OSError, PermissionError, IOError):
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
@@ -580,10 +680,17 @@ class CoreWindow:
         global mpro
         # Disable everything
         self.ui_lock()
-
         if self.firstrun:
             try:
-                self.headers()
+                mainheadersset = self.headers()
+                if self.clusteron.get() and self.clustersave.get():
+                    clusterheadersset = self.clusterheaders()
+                else:
+                    clusterheadersset = True
+                if not mainheadersset or not clusterheadersset:
+                    self.ui_lock()
+                    app.logevent("Analysis cancelled")
+                    return
                 self.firstrun = False
             except (OSError, PermissionError, IOError):
                 self.logevent("Unable to write to output file")
@@ -602,27 +709,29 @@ class CoreWindow:
     def ui_lock(self):
         self.close_filelist()
         self.close_previewer()
-        if self.locked:
-            newstate = '!disabled'
-        else:
-            newstate = 'disabled'
         listwidgets = (self.dirselect, self.filelistbutton, self.currdir, self.bitcheck, self.subdircheck,
                        self.nofilter, self.greyonly, self.detect, self.channelselect, self.textfilter, self.textentry,
-                       self.thrcheck, self.setthr, self.cluscheck, self.setarea, self.saveselect, self.savefile,
+                       self.thrcheck, self.cluscheck, self.saveselect, self.savefile, self.savefilenamebox,
                        self.previewbutton, self.refreshpreviewbutton)
-        for widget in listwidgets:
-            widget.state([newstate])
+        manualwidgets = (self.setthr, self.setarea, self.clusterfilenamebox, self.clustersavecheck)
         if self.locked:
+            for widget in listwidgets:
+                widget.state(['!disabled'])
             if self.thron.get():
                 self.threslide.config(state=tk.NORMAL)
                 self.setthr.state(['!disabled'])
             if self.clusteron.get():
                 self.setarea.state(['!disabled'])
+                self.clustersavecheck.state(['!disabled'])
+            if self.clustersave.get() and self.clusteron.get():
+                self.clusterfilenamebox.state(['!disabled'])
             if self.filterkwd.get():
                 self.textentry.state(['!disabled'])
             self.runbutton.config(text="Run", command=app.runscript)
             self.locked = False
         else:
+            for widget in listwidgets + manualwidgets:
+                widget.state(['disabled'])
             self.threslide.config(state=tk.DISABLED)
             self.runbutton.config(text="Stop", command=app.abort)
             self.locked = True
@@ -705,7 +814,7 @@ def cyclefiles(stopper, tgtdirectory):
                     thresh = app.threshold.get() * app.scalemultiplier
                     app.tempdepthlock = True
                 try:
-                    results = genstats(imagedata, thresh, app.clusteron.get())
+                    results = genstats(imagedata, thresh, app.clusteron.get(), file)
                     app.datawriter(file, results)
                 except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
                     app.logevent("Analysis failed, image may be corrupted")
@@ -799,7 +908,7 @@ def bit_depth_reset():
 
 
 # Data generators
-def genstats(inputimage, threshold, wantclusters):
+def genstats(inputimage, threshold, wantclusters, file):
     max_value = np.amax(inputimage)
     min_value = np.amin(inputimage)
     mask = (inputimage < threshold)
@@ -808,18 +917,27 @@ def genstats(inputimage, threshold, wantclusters):
     count = np.count_nonzero(inputimage)
     results_pack = (intint, count, max_value, min_value)
     if wantclusters:
-        cluster_results = getclusters(inputimage, threshold, app.minarea.get())
+        cluster_results = getclusters(inputimage, threshold, app.minarea.get(), file)
         results_pack += cluster_results
     return results_pack
 
 
 # Cluster Analysis
-def getclusters(trgtimg, threshold, minimumarea):
+def getclusters(trgtimg, threshold, minimumarea, file):
     # Find and count peaks above threshold, assign labels to clusters of stainng.
 
     localmax = peak_local_max(trgtimg, indices=False, threshold_abs=threshold)
     peaks, numpeaks = ndi.measurements.label(localmax)
     simpleclusters, numclusters = ndi.measurements.label(trgtimg)
+
+    if app.clustersave.get():
+        cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
+        for region in range(len(cprops)):
+            coord = tuple(int(x) for x in cprops[region].centroid)
+            resultpack = (region + 1, coord, cprops[region].area, cprops[region].max_intensity,
+                          cprops[region].min_intensity, cprops[region].mean_intensity,
+                          cprops[region].area * cprops[region].mean_intensity)
+            app.clusterwriter(file, resultpack)
     # Create table of cluster ids vs size of each, then list clusters bigger than minsize
     areacounts = np.unique(simpleclusters, return_counts=True)
     positivegroups = areacounts[0][1:][areacounts[1][1:] > minimumarea]
