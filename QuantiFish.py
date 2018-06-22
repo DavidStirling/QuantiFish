@@ -31,13 +31,16 @@ from skimage.feature import peak_local_max
 from skimage.measure import regionprops
 from skimage.transform import rescale
 
-version = "2.0 RC1"
+version = "2.0.0"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
 def resource_path(relative_path):
     if relative_path == 'resources/QFIcon':
-        extension = ".ico"
+        if os.name == 'nt':
+            extension = ".ico"
+        else:
+            extension = ".icns"
     elif os.name == 'nt':
         extension = ".png"
     else:
@@ -58,6 +61,8 @@ class CoreWindow:
         self.master.grid_columnconfigure(1, minsize=100)
         self.master.grid_columnconfigure(2, weight=1, minsize=250)
         self.master.grid_columnconfigure(3, minsize=100)
+        if os.name != 'nt':
+            self.master.tk_setPalette(background='#E7E7E7', selectForeground='#ffffff', selectBackground='#0000ff')
 
         # Parameters for different display modes.
         self.depthmap = {"8-bit": (1, 256), "10-bit": (4, 1024), "12-bit": (16, 4096), "16-bit": (256, 65536)}
@@ -313,6 +318,7 @@ class CoreWindow:
             if self.bitcheck.current() == 0:
                 self.depthlocked = False
                 app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
+                app.currentdepth = 8
         except (OSError, PermissionError, IOError):
             self.logevent("Failed to set directory")
 
@@ -322,10 +328,13 @@ class CoreWindow:
         if self.bitcheck.current() == 0:
             self.depthlocked = False
             app.scalemultiplier, app.maxrange = app.depthmap['8-bit']
+            app.currentdepth = 8
         else:
             self.depthlocked = True
             depthnames = {1: '8-bit', 2: '10-bit', 3: '12-bit', 4: '16-bit'}
+            depthnums = {1: '8', 2: '10', 3: '12', 4: '16'}
             bdid = depthnames[self.bitcheck.current()]
+            app.currentdepth = depthnums[self.bitcheck.current()]
             app.scalemultiplier, app.maxrange = app.depthmap[bdid]
 
     # Toggle inclusion of subdirectories
@@ -520,7 +529,6 @@ class CoreWindow:
             self.logevent("Unable to open file, did you select a .tif image?")
             return
         self.logevent("Opening preview")
-
         try:
             self.genpreview(self.previewfile, False, True)
             self.open_preview_window()
