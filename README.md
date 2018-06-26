@@ -21,7 +21,7 @@
 ##  Referencing
  Citations can be made using the following DOI:
  
- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1182791.svg)](https://doi.org/10.5281/zenodo.1182791)
+ [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1298429.svg)](https://doi.org/10.5281/zenodo.1298429)
  
  Full manuscript coming soon!
 
