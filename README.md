@@ -102,10 +102,10 @@ The **Pixel Value** box displays the intensity of the pixel which is currently u
  
 Data per image contains the following statistics:
 1.	File – the name and directory of the image being analysed
-2.	Integrated Intensity – The average brightness of your staining multiplied by the stained area. This is your overall measure of fluorescence.
+2.	Integrated Intensity – The sum of the positive pixels in the image, also equal to the average brightness of the stain multiplied by the stained area. This is your overall measure of fluorescence.
 3.	Positive Pixels – The total number of pixels which were considered positive (above the threshold). This represents the stained area.
-4.	Minimum – The lowest value among the positive pixels.
-5.	Maximum – The highest value among the positive pixels.
+4.	Minimum – The lowest pixel value in the image.
+5.	Maximum – The highest pixel value in the image.
 6.	Displayed Threshold – The threshold specified on the scale by the user.
 7.  Computed Threshold - The final value of the threshold after being adjusted for image bit depth. Pixels below this number were ignored. This is used to remove background.
 8.	Channel – The colour of the image being analysed.
