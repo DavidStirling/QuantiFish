@@ -1,0 +1,23 @@
+QuantiFish - Changelog
+
+Version 1.0 - 30/03/17
+- Initial Release
+
+Version 1.1 - 11/12/2017
+- Implemented cluster counting algorithm
+- Performance improvements
+- Initial Mac OS X support (10.12 "Sierra" and newer)
+
+
+Version 2.0 - 25/06/2018
+- Improved file type handling
+- Redesigned user interface
+- Support for previewing very large images
+- Can now export individual region statistics from cluster analysis
+- File list function allows greater control over analysis
+- File list filters replace metadata scanning feature
+- Add progress bar
+- Add bit depth control, replacing RAW/RGB modes
+- UI always offers thresholding on a range from 0-256 and scales this appropriately for different image types
+- Unified Windows and Mac scripts
+- Reduced the number of required third party packages
