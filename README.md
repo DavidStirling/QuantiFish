@@ -89,7 +89,7 @@ If you’ve selected an input directory, the program will automatically open ima
 
 The **Find Clusters** option will preview which "clusters" will be counted as positive if cluster analysis is enabled. Positive clusters will be shown in dark blue. This can be adjusted using the *Minimum Size* option.
 
-*N.B.* Clustering analysis is resource intensive and so does not update automatically. In excessively large images the software will preview clustering in a lower resolution, which may contain slight inaccuracies.
+*N.B.* Clustering analysis is resource intensive and so the preview does not update automatically. In excessively large images the software may preview clustering in a lower resolution, which could contain slight inaccuracies.
   
 The **Pixel Value** box displays the intensity of the pixel which is currently underneath the mouse cursor. Use this to assist with determining your threshold.
   
