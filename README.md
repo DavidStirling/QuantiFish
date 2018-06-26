@@ -16,7 +16,7 @@
   - Support for very large images
   - Ability to export data for each region of staining within an image
   
-  See the full changelog for more!
+  See the [full changelog](https://github.com/DavidStirling/QuantiFish/blob/master/ChangeLog.txt) for more!
   
 ##  Referencing
  Citations can be made using the following DOI:
