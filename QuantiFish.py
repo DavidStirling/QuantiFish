@@ -1,5 +1,5 @@
 # QuantiFish - A tool for quantification of fluorescence in Zebrafish embryos.
-# Copyright(C) 2017-2018 David Stirling
+# Copyright(C) 2017-2019 David Stirling
 
 """This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -26,12 +26,11 @@ from tkinter import ttk
 
 import numpy as np
 from PIL import Image, ImageTk
-from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
-from skimage.measure import regionprops
+from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
-version = "2.0.0"
+version = "2.0.1"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -547,7 +546,7 @@ class CoreWindow:
             posmask = (clusterim > thold)
             tmask2 = (clusterim < thold)
             clusterim[tmask2] = 0
-            simpleclusters, numclusters = ndi.measurements.label(clusterim)
+            simpleclusters, numclusters = label(clusterim > 0, return_num=True)
             areacounts = np.unique(simpleclusters, return_counts=True)
             positivegroups = areacounts[0][1:][areacounts[1][1:] > minimumarea]
             clustermask = np.isin(simpleclusters, positivegroups)
@@ -933,32 +932,33 @@ def genstats(inputimage, threshold, wantclusters, file):
 # Cluster Analysis
 def getclusters(trgtimg, threshold, minimumarea, file):
     # Find and count peaks above threshold, assign labels to clusters of stainng.
-
     localmax = peak_local_max(trgtimg, indices=False, threshold_abs=threshold)
-    peaks, numpeaks = ndi.measurements.label(localmax)
-    simpleclusters, numclusters = ndi.measurements.label(trgtimg)
-
+    peaks, numpeaks = label(localmax, return_num=True)
+    simpleclusters, numclusters = label(trgtimg > 0, return_num=True)
     if app.clustersave.get():
         cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
+        currentid = 0
         for region in range(len(cprops)):
-            coord = tuple(int(x) for x in cprops[region].centroid)
-            resultpack = (region + 1, coord, cprops[region].area, cprops[region].max_intensity,
-                          cprops[region].min_intensity, cprops[region].mean_intensity,
-                          cprops[region].area * cprops[region].mean_intensity)
-            app.clusterwriter(file, resultpack)
+            if cprops[region].area >= minimumarea:
+                currentid += 1
+                coord = tuple(int(x) for x in cprops[region].centroid)
+                resultpack = (currentid, coord, cprops[region].area, cprops[region].max_intensity,
+                              cprops[region].min_intensity, cprops[region].mean_intensity,
+                              cprops[region].area * cprops[region].mean_intensity)
+                app.clusterwriter(file, resultpack)
     # Create table of cluster ids vs size of each, then list clusters bigger than minsize
     areacounts = np.unique(simpleclusters, return_counts=True)
-    positivegroups = areacounts[0][1:][areacounts[1][1:] > minimumarea]
+    positivegroups = areacounts[0][1:][areacounts[1][1:] >= minimumarea]
     # Mask for only positive clusters, find clusters which are in the list of clusters, count them.
     clustermask = np.isin(simpleclusters, positivegroups)
-    targetclusters = np.sum(areacounts[1][1:] > minimumarea)
+    targetclusters = np.sum(areacounts[1][1:] >= minimumarea)
     # Clone the image then remove any staining in negative clusters. Quantifies staining in positive clusters.
     filthresholded = trgtimg.copy()
     filthresholded[np.invert(clustermask)] = 0
     intintfil = np.sum(filthresholded)
     countfil = np.count_nonzero(filthresholded)
     localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=threshold)
-    targetpeaks, numtargetpeaks = ndi.measurements.label(localmax2)
+    targetpeaks, numtargetpeaks = label(localmax2, return_num=True)
     return numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil
 
 
