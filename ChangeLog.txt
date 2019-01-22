@@ -21,3 +21,9 @@ Version 2.0 - 25/06/2018
 - UI always offers thresholding on a range from 0-256 and scales this appropriately for different image types
 - Unified Windows and Mac scripts
 - Reduced the number of required third party packages
+
+Version 2.0.1 - 22/01/2019
+- Fix error when searching for clusters in unusually large images.
+- Replace SciPy region labelling with faster Skimage implementation.
+- Cluster data file now only records clusters larger than minimum size.
+- Clustering now finds objects bigger than OR EQUAL TO the minimum size.
