@@ -16,12 +16,12 @@
   - Support for very large images
   - Ability to export data for each region of staining within an image
   
-  See the full changelog for more!
+  See the [full changelog](https://github.com/DavidStirling/QuantiFish/blob/master/ChangeLog.txt) for more!
   
 ##  Referencing
  Citations can be made using the following DOI:
  
- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1182791.svg)](https://doi.org/10.5281/zenodo.1182791)
+ [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1298429.svg)](https://doi.org/10.5281/zenodo.1298429)
  
  Full manuscript coming soon!
 
@@ -89,7 +89,7 @@ If you’ve selected an input directory, the program will automatically open ima
 
 The **Find Clusters** option will preview which "clusters" will be counted as positive if cluster analysis is enabled. Positive clusters will be shown in dark blue. This can be adjusted using the *Minimum Size* option.
 
-*N.B.* Clustering analysis is resource intensive and so does not update automatically. In excessively large images the software will preview clustering in a lower resolution, which may contain slight inaccuracies.
+*N.B.* Clustering analysis is resource intensive and so the preview does not update automatically. In excessively large images the software may preview clustering in a lower resolution, which could contain slight inaccuracies.
   
 The **Pixel Value** box displays the intensity of the pixel which is currently underneath the mouse cursor. Use this to assist with determining your threshold.
   
@@ -102,10 +102,10 @@ The **Pixel Value** box displays the intensity of the pixel which is currently u
  
 Data per image contains the following statistics:
 1.	File – the name and directory of the image being analysed
-2.	Integrated Intensity – The average brightness of your staining multiplied by the stained area. This is your overall measure of fluorescence.
+2.	Integrated Intensity – The sum of the positive pixels in the image, also equal to the average brightness of the stain multiplied by the stained area. This is your overall measure of fluorescence.
 3.	Positive Pixels – The total number of pixels which were considered positive (above the threshold). This represents the stained area.
-4.	Minimum – The lowest value among the positive pixels.
-5.	Maximum – The highest value among the positive pixels.
+4.	Minimum – The lowest pixel value in the image.
+5.	Maximum – The highest pixel value in the image.
 6.	Displayed Threshold – The threshold specified on the scale by the user.
 7.  Computed Threshold - The final value of the threshold after being adjusted for image bit depth. Pixels below this number were ignored. This is used to remove background.
 8.	Channel – The colour of the image being analysed.
