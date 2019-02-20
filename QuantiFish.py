@@ -574,6 +574,8 @@ class CoreWindow:
                 self.resizefactor = 750 / im.shape[1]
                 self.imsml = rescale(im, self.resizefactor)
                 self.imsml = (self.imsml * 255).astype('uint8')
+            else:
+                self.imsml = im
             self.imlrg = np.repeat(imfile[:, :, np.newaxis], 3, axis=2)  # Full size 256 array
             self.imsml = np.repeat(self.imsml[:, :, np.newaxis], 3, axis=2)  # Scaled 256 array
             nooverlay = Image.fromarray(self.imsml, 'RGB')
