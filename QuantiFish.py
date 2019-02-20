@@ -30,7 +30,7 @@ from skimage.feature import peak_local_max
 from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
-version = "2.0.1"
+version = "2.0.2"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
