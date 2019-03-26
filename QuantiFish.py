@@ -630,12 +630,14 @@ class CoreWindow:
     def headers(self):
         if self.clusteron.get():
             headings = (
-                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Total Clusters',
+                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area',
+                'Total Clusters',
                 'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters',
                 'Positive Pixels in Large Clusters', 'Displayed Threshold', 'Computed Threshold', 'Channel')
         else:
             headings = (
-                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Displayed Threshold',
+                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area',
+                'Displayed Threshold',
                 'Computed Threshold', 'Channel')
         savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
         if os.path.isfile(savefile):
@@ -924,7 +926,18 @@ def genstats(inputimage, threshold, wantclusters, file):
     inputimage[mask] = 0
     intint = np.sum(inputimage)
     count = np.count_nonzero(inputimage)
-    results_pack = (intint, count, max_value, min_value)
+    coordlist = np.argwhere(inputimage > 0)
+    from scipy.spatial import ConvexHull, qhull
+    if len(coordlist) > 2:
+        try:
+            hull = ConvexHull(coordlist)
+            arearesult = hull.area
+        except (qhull.QhullError, ValueError):
+            # Just in case staining forms a perfectly straight 2d line (area of 0)
+            arearesult = 0
+    else:
+        arearesult = 0
+    results_pack = (intint, count, max_value, min_value, arearesult)
     if wantclusters:
         cluster_results = getclusters(inputimage, threshold, app.minarea.get(), file)
         results_pack += cluster_results
