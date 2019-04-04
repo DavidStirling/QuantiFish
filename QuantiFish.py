@@ -30,8 +30,8 @@ from skimage.feature import peak_local_max
 from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
-version = "2.0.2"
-
+version = "2.1 BETA"
+sort_mode = True  # TEMP VARIABLE
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
 def resource_path(relative_path):
@@ -633,7 +633,7 @@ class CoreWindow:
                 'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area',
                 'Total Clusters',
                 'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters',
-                'Positive Pixels in Large Clusters', 'Displayed Threshold', 'Computed Threshold', 'Channel')
+                'Positive Pixels in Large Clusters', 'Fluor50', 'Displayed Threshold', 'Computed Threshold', 'Channel')
         else:
             headings = (
                 'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area',
@@ -663,8 +663,9 @@ class CoreWindow:
     def clusterheaders(self):
         headings = (
             'File', 'Cluster ID', 'Cluster Location', 'Cluster Area', 'Maximum Intensity', 'Minimum Intensity',
-            'Average Intensity', 'Integrated Intensity', 'Displayed Threshold', 'Computed Threshold', 'Channel')
-
+            'Average Intensity', 'Integrated Intensity')
+        if sort_mode:
+            headings += ('Percent Intensity', 'Cumulative Intensity', 'Cumulative Percent Intensity')
         savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
         if os.path.isfile(savefile):
             if not messagebox.askokcancel("File Already Exists",
@@ -676,13 +677,11 @@ class CoreWindow:
         return True
 
     # Exports data to csv file
-    def clusterwriter(self, exportpath, exportdata):
-        writeme = (exportpath,) + exportdata + (self.threshold.get(), self.threshold.get() * app.scalemultiplier,
-                                                app.currentchannel)
+    def clusterwriter(self, exportdata):
+        savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
         try:
-            savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
             with open(savefile, 'a', newline="\n", encoding="utf-8") as f:
-                writer(f).writerow(writeme)
+                writer(f).writerows(exportdata)
         except (OSError, PermissionError, IOError):
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
 
@@ -950,17 +949,33 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     localmax = peak_local_max(trgtimg, indices=False, threshold_abs=threshold)
     peaks, numpeaks = label(localmax, return_num=True)
     simpleclusters, numclusters = label(trgtimg > 0, return_num=True)
+    # TODO: Insert code for sorting and collecting cluster data here
+    fluor50 = "None"
     if app.clustersave.get():
         cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
         currentid = 0
+        clusterbuffer = []  # Store cluster data for writing in bulk
         for region in range(len(cprops)):
             if cprops[region].area >= minimumarea:
                 currentid += 1
                 coord = tuple(int(x) for x in cprops[region].centroid)
-                resultpack = (currentid, coord, cprops[region].area, cprops[region].max_intensity,
+                resultpack = [file, currentid, coord, cprops[region].area, cprops[region].max_intensity,
                               cprops[region].min_intensity, cprops[region].mean_intensity,
-                              cprops[region].area * cprops[region].mean_intensity)
-                app.clusterwriter(file, resultpack)
+                              cprops[region].area * cprops[region].mean_intensity]
+                clusterbuffer.append(resultpack)
+        if len(clusterbuffer) > 0:  # Only bother trying to write if there's data
+            if sort_mode:  # Arrange clusters by size
+                clusterbuffer.sort(reverse=True, key=lambda x: x[7])
+                listintensities = list(zip(*clusterbuffer))[7]
+                totalfluor = sum(listintensities)
+                percentlist = [point / totalfluor * 100 for point in listintensities]
+                cumulativelist = np.cumsum(listintensities)
+                cumulativepercent = np.cumsum(percentlist)
+                fluor50 = getfluor50(cumulativepercent)
+                for i in range(len(clusterbuffer)):
+                    clusterbuffer[i][1] = i + 1  # Update id
+                    clusterbuffer[i] = clusterbuffer[i] + [percentlist[i], cumulativelist[i], cumulativepercent[i]]
+            app.clusterwriter(clusterbuffer)
     # Create table of cluster ids vs size of each, then list clusters bigger than minsize
     areacounts = np.unique(simpleclusters, return_counts=True)
     positivegroups = areacounts[0][1:][areacounts[1][1:] >= minimumarea]
@@ -974,8 +989,16 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     countfil = np.count_nonzero(filthresholded)
     localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=threshold)
     targetpeaks, numtargetpeaks = label(localmax2, return_num=True)
-    return numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil
+    return numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil, fluor50
 
+
+def getfluor50(cumpercentlist):
+    from scipy import interpolate
+    cumpercentlist = np.insert(cumpercentlist, 0, 0)  # Insert a point at 0
+    ids = np.arange(0, len(cumpercentlist))
+    curve = interpolate.interp1d(cumpercentlist, ids, kind='cubic')
+    fluor50val = float(curve(50))
+    return fluor50val
 
 # Save the preview image
 def savepreview():
