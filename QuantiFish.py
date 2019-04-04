@@ -26,12 +26,14 @@ from tkinter import ttk
 
 import numpy as np
 from PIL import Image, ImageTk
+from scipy.spatial import ConvexHull, qhull, distance_matrix, distance
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
 version = "2.1 BETA"
 sort_mode = True  # TEMP VARIABLE
+wantspatial = True
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
 def resource_path(relative_path):
@@ -633,12 +635,12 @@ class CoreWindow:
                 'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area',
                 'Total Clusters',
                 'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters',
-                'Positive Pixels in Large Clusters', 'Fluor50', 'Displayed Threshold', 'Computed Threshold', 'Channel')
+                'Positive Pixels in Large Clusters', 'Fluor50')
+            if wantspatial:
+                headings += ('Total Grid Boxes', 'Positive Grid Boxes', 'Polygon Area', 'ICDmax')
         else:
-            headings = (
-                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area',
-                'Displayed Threshold',
-                'Computed Threshold', 'Channel')
+            headings = ('File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Convex Hull Area')
+        headings += ('Displayed Threshold', 'Computed Threshold', 'Channel')
         savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
         if os.path.isfile(savefile):
             if not messagebox.askokcancel("File Already Exists",
@@ -926,7 +928,6 @@ def genstats(inputimage, threshold, wantclusters, file):
     intint = np.sum(inputimage)
     count = np.count_nonzero(inputimage)
     coordlist = np.argwhere(inputimage > 0)
-    from scipy.spatial import ConvexHull, qhull
     if len(coordlist) > 2:
         try:
             hull = ConvexHull(coordlist)
@@ -955,6 +956,7 @@ def getclusters(trgtimg, threshold, minimumarea, file):
         cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
         currentid = 0
         clusterbuffer = []  # Store cluster data for writing in bulk
+        listcentroids = []
         for region in range(len(cprops)):
             if cprops[region].area >= minimumarea:
                 currentid += 1
@@ -976,6 +978,10 @@ def getclusters(trgtimg, threshold, minimumarea, file):
                     clusterbuffer[i][1] = i + 1  # Update id
                     clusterbuffer[i] = clusterbuffer[i] + [percentlist[i], cumulativelist[i], cumulativepercent[i]]
             app.clusterwriter(clusterbuffer)
+            listcentroids = list(zip(*clusterbuffer))[2]
+        if wantspatial:
+            spatials = runspatialanalysis(listcentroids, trgtimg.shape)
+            # TODO: Add blank spatial variables
     # Create table of cluster ids vs size of each, then list clusters bigger than minsize
     areacounts = np.unique(simpleclusters, return_counts=True)
     positivegroups = areacounts[0][1:][areacounts[1][1:] >= minimumarea]
@@ -989,16 +995,89 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     countfil = np.count_nonzero(filthresholded)
     localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=threshold)
     targetpeaks, numtargetpeaks = label(localmax2, return_num=True)
-    return numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil, fluor50
+    returnpack = (numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil, fluor50)
+    if wantspatial:
+        returnpack += spatials
+    return returnpack
 
 
 def getfluor50(cumpercentlist):
     from scipy import interpolate
     cumpercentlist = np.insert(cumpercentlist, 0, 0)  # Insert a point at 0
     ids = np.arange(0, len(cumpercentlist))
-    curve = interpolate.interp1d(cumpercentlist, ids, kind='cubic')
+    curve = interpolate.interp1d(cumpercentlist, ids, kind='linear')
     fluor50val = float(curve(50))
     return fluor50val
+
+
+def runspatialanalysis(pointlist, imageshape):
+    ydim, xdim = imageshape
+    coordmap = mapcoords(pointlist, xdim, ydim)
+    positivegrid, totalgrid = gridtest(coordmap, xdim, ydim)
+    if len(pointlist) > 2:
+        chullarea, icdmax = findconvexhull(pointlist)
+    else:
+        chullarea = 0
+        icdmax = 0
+    resultspack = (totalgrid, positivegrid, chullarea, icdmax)
+    return resultspack
+
+
+def mapcoords(inputlist, xdim, ydim):
+    # Generate blank array same shape as original image
+    blankimage = np.zeros((ydim, xdim), dtype=bool)
+    for coord in inputlist:
+        y, x = coord
+        blankimage[y, x] = True
+    return blankimage
+
+
+def gridtest(inputarray, imxdim, imydim):
+    positivecount = 0
+    totalcount = 0
+    numpixels = 50
+    # TODO: Replace numpixels with UI element
+    splitfactory = int(imydim / numpixels)
+    splitfactorx = int(imxdim / numpixels)
+    arraylist = np.array_split(inputarray, splitfactory, 0)
+    arraycatcher = []
+    for array in arraylist:
+        subarrays = np.array_split(array, splitfactorx, 1)
+        arraycatcher.append(subarrays)
+
+    for arrayset in arraycatcher:
+        for subarray in arrayset:
+            totalcount += 1
+            if np.max(subarray):
+                positivecount += 1
+    return positivecount, totalcount
+
+
+def findconvexhull(coords):
+    # Add coords to array
+    if len(coords) > 2:
+        coordarray = np.array(coords)
+        try:
+            hull = ConvexHull(coordarray)
+            arearesult = hull.area
+            # Restrict test points to those around the hull to minimise work.
+            candidates = coordarray[hull.vertices]
+            dist_mat = distance_matrix(candidates, candidates)
+            i, j = np.unravel_index(dist_mat.argmax(), dist_mat.shape)
+            maxdist = distance.euclidean(candidates[i], candidates[j])
+        except (qhull.QhullError, ValueError):
+            # Just in case staining forms a perfectly straight 2d line (area of 0)
+            arearesult = 0
+            maxdist = 0
+            # TODO: brute force maxdist if hull fails
+        return arearesult, maxdist
+    elif len(coords) == 2:
+        test = np.array(coords)
+        maxdist = distance.euclidean(test[0], test[1])
+        return "Insufficient points", maxdist
+    else:
+        return "Insufficient points", "Insufficient Points"
+
 
 # Save the preview image
 def savepreview():
