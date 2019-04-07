@@ -78,7 +78,7 @@ When enabled, only pixels above the specified threshold will be counted as posit
 
 **Save Cluster Data** - When enabled, the intensity and size data for each individual cluster within an image will be recorded in a second output file, specified under this option.
 
-####  Spatial Measures
+###  Spatial Measures
 
 **Stain Polygon Area** - Draws a polygon around all staining using the minimum possible vertices, like a rubber band. Good for evaluating how far staining has disseminated.
 
