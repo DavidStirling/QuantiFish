@@ -26,11 +26,13 @@ from tkinter import ttk
 
 import numpy as np
 from PIL import Image, ImageTk
+from scipy.interpolate import interp1d
+from scipy.spatial import ConvexHull, qhull, distance_matrix, distance
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
-version = "2.0.2"
+version = "2.1"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -163,6 +165,11 @@ class CoreWindow:
         self.filtermode = tk.IntVar()
         self.filtermode.set(0)
         self.filterbox = ttk.LabelFrame(self.corewrapper, text="File List Filter")
+        self.textfilter = ttk.Checkbutton(self.filterbox, text="Keyword:", variable=self.filterkwd,
+                                          command=self.toggle_keyword)
+        self.textentry = ttk.Entry(self.filterbox, width=8)
+        self.textentry.state(['disabled'])
+        self.filetypelabel = ttk.Label(self.filterbox, text="Image Type Restriction:")
         self.nofilter = ttk.Radiobutton(self.filterbox, text="None (Process all)", variable=self.filtermode, value="0",
                                         command=self.switch_file_filter)
         self.greyonly = ttk.Radiobutton(self.filterbox, text="Greyscale Only", variable=self.filtermode, value="1",
@@ -173,17 +180,14 @@ class CoreWindow:
                                           state='readonly')
         self.channelselect.current(0)
         self.channelselect.state(['disabled'])
-        self.textfilter = ttk.Checkbutton(self.filterbox, text="Keyword:", variable=self.filterkwd,
-                                          command=self.toggle_keyword)
-        self.textentry = ttk.Entry(self.filterbox, width=8)
-        self.textentry.state(['disabled'])
+        self.textfilter.grid(column=1, row=1, sticky=tk.W, pady=2)
+        self.textentry.grid(column=2, row=1, sticky=tk.NSEW, pady=2)
+        self.filetypelabel.grid(column=1, row=2, columnspan=2, sticky=tk.W, pady=(5, 0))
         self.filterbox.grid(column=1, row=2, rowspan=2, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
-        self.nofilter.grid(column=1, row=1, columnspan=2, sticky=tk.W, pady=2)
-        self.greyonly.grid(column=1, row=2, columnspan=2, sticky=tk.W, pady=2)
-        self.detect.grid(column=1, row=3, sticky=tk.W, pady=2)
-        self.channelselect.grid(column=2, row=3, sticky=tk.NSEW, pady=2)
-        self.textfilter.grid(column=1, row=4, sticky=tk.W, pady=2)
-        self.textentry.grid(column=2, row=4, sticky=tk.NSEW, pady=2)
+        self.nofilter.grid(column=1, row=3, columnspan=2, sticky=tk.W, pady=2)
+        self.greyonly.grid(column=1, row=4, columnspan=2, sticky=tk.W, pady=2)
+        self.detect.grid(column=1, row=5, sticky=tk.W, pady=2)
+        self.channelselect.grid(column=2, row=5, sticky=tk.NSEW, pady=2)
 
         # Threshold Selector
         self.thrframe = ttk.LabelFrame(self.corewrapper, text="Threshold (minimum intensity to count)")
@@ -211,14 +215,30 @@ class CoreWindow:
         self.clustersave.set(False)
         self.clusfilename = tk.StringVar()
         self.clusfilename.set('clusters')
-        self.clusterbox = ttk.LabelFrame(self.corewrapper, relief=tk.GROOVE, text="Cluster Analysis")
+        self.wantfluor50 = tk.BooleanVar()
+        self.wantfluor50.set(False)
+        self.wantspatial = tk.BooleanVar()
+        self.wantspatial.set(False)
+        self.gridboxsize = tk.IntVar()
+        self.gridboxsize.set(50)
+        self.clusterbox = ttk.LabelFrame(self.corewrapper, relief=tk.GROOVE, text="Dissemination Analysis")
         self.cluscheck = ttk.Checkbutton(self.clusterbox, text="Analyse Clustering",
                                          variable=self.clusteron,
                                          onvalue=True, offvalue=False, command=self.cluststatus)
-        self.setsizelabel = ttk.Label(self.clusterbox, text="Minimum Size:")
+        self.setminsizelabel = ttk.Label(self.clusterbox, text="Minimum Size:")
         self.areavalidate = (self.clusterbox.register(self.validate_number), '%P')
         self.setarea = ttk.Entry(self.clusterbox, textvariable=self.minarea, validate='focusout',
                                  validatecommand=self.areavalidate, width=5, justify=tk.CENTER)
+
+        self.fluorcheck = ttk.Checkbutton(self.clusterbox, text="Calculate Fluor50", variable=self.wantfluor50,
+                                          onvalue=True, offvalue=False, command=self.fluorstatus)
+        self.spatialcheck = ttk.Checkbutton(self.clusterbox, text="Spatial Analysis", variable=self.wantspatial,
+                                            onvalue=True, offvalue=False, command=self.spatialstatus)
+        self.setboxsizelabel = ttk.Label(self.clusterbox, text="Box Size:")
+        self.boxsizevalidate = (self.clusterbox.register(self.validate_boxsize), '%P')
+        self.setboxsize = ttk.Entry(self.clusterbox, textvariable=self.gridboxsize, validate='focusout',
+                                    validatecommand=self.boxsizevalidate, width=5, justify=tk.CENTER)
+
         self.clustersavecheck = ttk.Checkbutton(self.clusterbox, text="Save cluster data:",
                                                 variable=self.clustersave,
                                                 onvalue=True, offvalue=False, command=self.singleclusterstatus)
@@ -229,12 +249,19 @@ class CoreWindow:
         self.setarea.state(['disabled'])
         self.clustersavecheck.state(['disabled'])
         self.clusterfilenamebox.state(['disabled'])
+        self.fluorcheck.state(['disabled'])
+        self.spatialcheck.state(['disabled'])
+        self.setboxsize.state(['disabled'])
         self.cluscheck.grid(column=1, row=1, padx=(10, 5))
-        self.setsizelabel.grid(column=3, row=1)
-        self.setarea.grid(column=4, row=1, padx=(0, 5))  # padx=(0, 10), pady=(0, 5))
-        self.clustersavecheck.grid(column=7, row=1)
-        self.clusterfilenamebox.grid(column=8, row=1)
-        self.clusterextension.grid(column=9, row=1, sticky=tk.W, padx=(0, 10))
+        self.setminsizelabel.grid(column=3, row=1)
+        self.setarea.grid(column=4, row=1, padx=(0, 5))
+        self.clustersavecheck.grid(column=7, row=2, sticky=tk.W)
+        self.clusterfilenamebox.grid(column=8, row=2, pady=(0, 5))
+        self.clusterextension.grid(column=9, row=2, sticky=tk.W, padx=(0, 10))
+        self.fluorcheck.grid(column=7, row=1, columnspan=3, sticky=tk.W)
+        self.spatialcheck.grid(column=1, row=2, padx=(10, 5), sticky=tk.W)
+        self.setboxsizelabel.grid(column=3, row=2, sticky=tk.E)
+        self.setboxsize.grid(column=4, row=2, padx=(0, 5))
         self.clusterbox.grid(column=2, row=3, sticky=tk.W + tk.E + tk.N + tk.S, padx=5, pady=5)
         self.clusterbox.grid_columnconfigure(2, weight=1)
         self.clusterbox.grid_columnconfigure(5, weight=1)
@@ -436,7 +463,11 @@ class CoreWindow:
             self.logevent("Cluster Analysis Enabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.setarea.state(['!disabled'])
+            self.fluorcheck.state(['!disabled'])
+            self.spatialcheck.state(['!disabled'])
             self.clustersavecheck.state(['!disabled'])
+            if self.wantspatial.get():
+                self.setboxsize.state(['!disabled'])
             if self.clustersave.get():
                 self.clusterfilenamebox.state(['!disabled'])
             self.minarea.set(1)
@@ -444,10 +475,33 @@ class CoreWindow:
             self.logevent("Cluster Analysis Disabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.setarea.state(['disabled'])
+            self.fluorcheck.state(['disabled'])
+            self.spatialcheck.state(['disabled'])
+            self.setboxsize.state(['disabled'])
             self.clustersavecheck.state(['disabled'])
             self.clusterfilenamebox.state(['disabled'])
         self.firstrun = True
 
+    # Detect Fluor50 status and note save format change
+    def fluorstatus(self):
+        if self.wantfluor50.get():
+            self.logevent("Individual cluster data will be sorted by size to determine Fluor50.")
+        else:
+            self.logevent("Cluster data will no longer be sorted.")
+        self.firstrun = True
+
+    # Detect spatial analysis status, note save format change and setup widgets
+    def spatialstatus(self):
+        if self.wantspatial.get():
+            self.logevent("Spatial distribution analysis will be performed.")
+            self.setboxsize.state(['!disabled'])
+            self.gridboxsize.set(50)
+        else:
+            self.logevent("Spatial analysis disabled.")
+            self.setboxsize.state(['disabled'])
+        self.firstrun = True
+
+    # Detect if user wants to save cluster data. Toggle name box.
     def singleclusterstatus(self):
         if self.clustersave.get():
             self.logevent("Data for each cluster will be saved in a seperate file.")
@@ -470,8 +524,24 @@ class CoreWindow:
                 self.minarea.set(99999)
                 return False
         except ValueError:
-            self.logevent("Invalid entry")
+            app.logevent("Minimum area out of acceptable range")
             self.minarea.set(1)
+            return False
+
+    # Restrict minimum area input to numbers only.
+    def validate_boxsize(self, newvalue):
+        if newvalue in ("", "0"):
+            self.gridboxsize.set(5)
+            return False
+        try:
+            if 4 < int(newvalue) < 1000:
+                return True
+            else:
+                self.gridboxsize.set(50)
+                return False
+        except ValueError:
+            app.logevent("Box size out of acceptable range")
+            self.minarea.set(5)
             return False
 
     # Restrict filename input to text only.
@@ -628,15 +698,15 @@ class CoreWindow:
 
     # Writes headers in output file
     def headers(self):
+        headings = ('File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Stain Polygon Area')
         if self.clusteron.get():
-            headings = (
-                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Total Clusters',
-                'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters', 'Integrated Intensity in Large Clusters',
-                'Positive Pixels in Large Clusters', 'Displayed Threshold', 'Computed Threshold', 'Channel')
-        else:
-            headings = (
-                'File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Displayed Threshold',
-                'Computed Threshold', 'Channel')
+            headings += ('Total Clusters', 'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters',
+                         'Integrated Intensity in Large Clusters', 'Positive Pixels in Large Clusters')
+            if app.wantfluor50.get():
+                headings += ('Fluor50',)
+            if app.wantspatial.get():
+                headings += ('Total Grid Boxes', 'Positive Grid Boxes', 'Cluster Polygon Area', 'ICDmax')
+        headings += ('Displayed Threshold', 'Computed Threshold', 'Channel')
         savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
         if os.path.isfile(savefile):
             if not messagebox.askokcancel("File Already Exists",
@@ -658,11 +728,13 @@ class CoreWindow:
         except (OSError, PermissionError, IOError):
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
 
+    # Writes headers needed in cluster analysis file
     def clusterheaders(self):
         headings = (
             'File', 'Cluster ID', 'Cluster Location', 'Cluster Area', 'Maximum Intensity', 'Minimum Intensity',
-            'Average Intensity', 'Integrated Intensity', 'Displayed Threshold', 'Computed Threshold', 'Channel')
-
+            'Average Intensity', 'Integrated Intensity')
+        if app.wantfluor50.get():
+            headings += ('Percent Intensity', 'Cumulative Intensity', 'Cumulative Percent Intensity')
         savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
         if os.path.isfile(savefile):
             if not messagebox.askokcancel("File Already Exists",
@@ -674,13 +746,11 @@ class CoreWindow:
         return True
 
     # Exports data to csv file
-    def clusterwriter(self, exportpath, exportdata):
-        writeme = (exportpath,) + exportdata + (self.threshold.get(), self.threshold.get() * app.scalemultiplier,
-                                                app.currentchannel)
+    def clusterwriter(self, exportdata):
+        savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
         try:
-            savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
             with open(savefile, 'a', newline="\n", encoding="utf-8") as f:
-                writer(f).writerow(writeme)
+                writer(f).writerows(exportdata)
         except (OSError, PermissionError, IOError):
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
 
@@ -721,8 +791,9 @@ class CoreWindow:
         listwidgets = (self.dirselect, self.filelistbutton, self.currdir, self.bitcheck, self.subdircheck,
                        self.nofilter, self.greyonly, self.detect, self.channelselect, self.textfilter, self.textentry,
                        self.thrcheck, self.cluscheck, self.saveselect, self.savefile, self.savefilenamebox,
-                       self.previewbutton, self.refreshpreviewbutton)
-        manualwidgets = (self.setthr, self.setarea, self.clusterfilenamebox, self.clustersavecheck)
+                       self.previewbutton, self.refreshpreviewbutton, self.fluorcheck, self.spatialcheck,
+                       self.setminsizelabel, self.setboxsizelabel, self.filetypelabel)
+        manualwidgets = (self.setthr, self.setarea, self.clusterfilenamebox, self.clustersavecheck, self.setboxsize)
         if self.locked:
             for widget in listwidgets:
                 widget.state(['!disabled'])
@@ -732,6 +803,8 @@ class CoreWindow:
             if self.clusteron.get():
                 self.setarea.state(['!disabled'])
                 self.clustersavecheck.state(['!disabled'])
+                if self.wantspatial.get():
+                    self.setboxsize.state(['!disabled'])
             if self.clustersave.get() and self.clusteron.get():
                 self.clusterfilenamebox.state(['!disabled'])
             if self.filterkwd.get():
@@ -826,7 +899,7 @@ def cyclefiles(stopper, tgtdirectory):
                     results = genstats(imagedata, thresh, app.clusteron.get(), file)
                     app.datawriter(file, results)
                 except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
-                    app.logevent("Analysis failed, image may be corrupted")
+                    app.logevent("Analysis failed, image may be corrupted. Please report this!")
         else:
             app.progress_var.set(app.listlength)
             app.progress_text.set('Analysis Aborted')
@@ -924,7 +997,17 @@ def genstats(inputimage, threshold, wantclusters, file):
     inputimage[mask] = 0
     intint = np.sum(inputimage)
     count = np.count_nonzero(inputimage)
-    results_pack = (intint, count, max_value, min_value)
+    coordlist = np.argwhere(inputimage > 0)
+    if len(coordlist) > 2:
+        try:
+            hull = ConvexHull(coordlist)
+            arearesult = hull.area
+        except (qhull.QhullError, ValueError):
+            # Just in case staining forms a perfectly straight 2d line (area of 0)
+            arearesult = 0
+    else:
+        arearesult = 0
+    results_pack = (intint, count, max_value, min_value, arearesult)
     if wantclusters:
         cluster_results = getclusters(inputimage, threshold, app.minarea.get(), file)
         results_pack += cluster_results
@@ -937,17 +1020,6 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     localmax = peak_local_max(trgtimg, indices=False, threshold_abs=threshold)
     peaks, numpeaks = label(localmax, return_num=True)
     simpleclusters, numclusters = label(trgtimg > 0, return_num=True)
-    if app.clustersave.get():
-        cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
-        currentid = 0
-        for region in range(len(cprops)):
-            if cprops[region].area >= minimumarea:
-                currentid += 1
-                coord = tuple(int(x) for x in cprops[region].centroid)
-                resultpack = (currentid, coord, cprops[region].area, cprops[region].max_intensity,
-                              cprops[region].min_intensity, cprops[region].mean_intensity,
-                              cprops[region].area * cprops[region].mean_intensity)
-                app.clusterwriter(file, resultpack)
     # Create table of cluster ids vs size of each, then list clusters bigger than minsize
     areacounts = np.unique(simpleclusters, return_counts=True)
     positivegroups = areacounts[0][1:][areacounts[1][1:] >= minimumarea]
@@ -961,7 +1033,116 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     countfil = np.count_nonzero(filthresholded)
     localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=threshold)
     targetpeaks, numtargetpeaks = label(localmax2, return_num=True)
-    return numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil
+    cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
+    currentid = 0
+    clusterbuffer = []  # Store cluster data for writing in bulk
+    listcentroids = []  # Store centroids for calculating fluor50
+    fluor50 = "N/A"  # Fallback f50 value for empty images
+    returnpack = (numclusters, numpeaks, targetclusters, numtargetpeaks, intintfil, countfil)
+    for region in range(len(cprops)):
+        if cprops[region].area >= minimumarea:
+            currentid += 1
+            coord = tuple(int(x) for x in cprops[region].centroid)
+            resultpack = [file, currentid, coord, cprops[region].area, cprops[region].max_intensity,
+                          cprops[region].min_intensity, cprops[region].mean_intensity,
+                          cprops[region].area * cprops[region].mean_intensity]
+            clusterbuffer.append(resultpack)
+    if len(clusterbuffer) > 0:  # Only bother trying to write if there's data
+        if app.wantfluor50.get():  # Arrange clusters by size
+            clusterbuffer.sort(reverse=True, key=lambda x: x[7])
+            listintensities = list(zip(*clusterbuffer))[7]
+            totalfluor = sum(listintensities)
+            percentlist = [point / totalfluor * 100 for point in listintensities]
+            cumulativelist = np.cumsum(listintensities)
+            cumulativepercent = np.cumsum(percentlist)
+            fluor50 = getfluor50(cumulativepercent)
+            for i in range(len(clusterbuffer)):
+                clusterbuffer[i][1] = i + 1  # Update id
+                clusterbuffer[i] = clusterbuffer[i] + [percentlist[i], cumulativelist[i], cumulativepercent[i]]
+        listcentroids = list(zip(*clusterbuffer))[2]
+        if app.clustersave.get():
+            app.clusterwriter(clusterbuffer)
+    if app.wantfluor50.get():
+        returnpack += (fluor50,)
+    if app.wantspatial.get():
+        spatials = runspatialanalysis(listcentroids, trgtimg.shape)
+        returnpack += spatials
+    return returnpack
+
+
+# Determine Fluor50 - clusters needed for 50% of all staining
+def getfluor50(cumpercentlist):
+    cumpercentlist = np.insert(cumpercentlist, 0, 0)  # Insert a point at 0
+    ids = np.arange(0, len(cumpercentlist))
+    curve = interp1d(cumpercentlist, ids, kind='linear')
+    fluor50val = float(curve(50))
+    return fluor50val
+
+
+# Determine spatial measurements. Grid test, polygon area, max icd.
+def runspatialanalysis(pointlist, imageshape):
+    ydim, xdim = imageshape
+    coordmap = mapcoords(pointlist, xdim, ydim)
+    positivegrid, totalgrid = gridtest(coordmap, xdim, ydim)
+    if len(pointlist) > 2:
+        chullarea, icdmax = findconvexhull(pointlist)
+    elif len(pointlist) == 2:  # Can't make polygon from 2 points.
+        chullarea = 0
+        testpts = np.array(pointlist)
+        icdmax = distance.euclidean(testpts[0], testpts[1])
+    else:  # Not enough points for distance calculations
+        chullarea = 0
+        icdmax = 0
+    resultspack = (totalgrid, positivegrid, chullarea, icdmax)
+    return resultspack
+
+
+# Generate blank array same shape as original image and map the cluster centroids onto it
+def mapcoords(inputlist, xdim, ydim):
+    blankimage = np.zeros((ydim, xdim), dtype=bool)
+    for coord in inputlist:
+        y, x = coord
+        blankimage[y, x] = True
+    return blankimage
+
+
+# Divide the image into boxes and check for clusters within each
+def gridtest(inputarray, imxdim, imydim):
+    positivecount = 0
+    totalcount = 0
+    splitfactory = int(imydim / app.gridboxsize.get())
+    splitfactorx = int(imxdim / app.gridboxsize.get())
+    arraylist = np.array_split(inputarray, splitfactory, 0)
+    arraycatcher = []
+    for array in arraylist:
+        subarrays = np.array_split(array, splitfactorx, 1)
+        arraycatcher.append(subarrays)
+
+    for arrayset in arraycatcher:
+        for subarray in arrayset:
+            totalcount += 1
+            if np.max(subarray):
+                positivecount += 1
+    return positivecount, totalcount
+
+
+# Generate a convex hull (polygon containing all coordinates)
+def findconvexhull(coords):
+    # Add coords to array
+    coordarray = np.array(coords)
+    try:
+        hull = ConvexHull(coordarray)
+        arearesult = hull.area
+        # Restrict test points to those around the hull to minimise work.
+        candidates = coordarray[hull.vertices]
+    except (qhull.QhullError, ValueError):
+        # Can't restrict maxdist candidates if hull drawing fails (usually if stain is 1d)
+        arearesult = 0
+        candidates = coordarray
+    dist_mat = distance_matrix(candidates, candidates)
+    i, j = np.unravel_index(dist_mat.argmax(), dist_mat.shape)
+    maxdist = distance.euclidean(candidates[i], candidates[j])
+    return arearesult, maxdist
 
 
 # Save the preview image
@@ -976,6 +1157,7 @@ def savepreview():
         app.logevent("Unable to save file, is this location valid?")
 
 
+# Previewer Window
 class PreviewWindow:
     def __init__(self, master):
         self.master = master
@@ -1170,6 +1352,7 @@ class AboutWindow:
         self.aboutwindow.pack()
 
 
+# File List Window
 class FileListWindow:
     # Simple file list window frame
     def __init__(self, master):
