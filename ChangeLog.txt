@@ -28,3 +28,12 @@ Version 2.0.2 - 20/02/2019
 - Cluster data file now only records clusters larger than minimum size.
 - Clustering now finds objects bigger than OR EQUAL TO the minimum size.
 - Previewer now supports images smaller than the window.
+
+Version 2.1 - 07/04/2019
+- Re-arrange file list filter box to highlight the more useful keyword filter.
+- "Cluster Analysis" renamed to "Dissemination Analysis", introducing new measurements.
+- Ability to calculate Fluor50: Number of clusters responsible for 50% of staining.
+- Analysis of spatial distribution of staining.
+- Calculate area of a polygon containing all staining or clusters.
+- Calculate furthest distance between two clusters of staining (ICDmax).
+- Divide image into boxes of specified size and determine how many contain clusters.

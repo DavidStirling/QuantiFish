@@ -895,11 +895,11 @@ def cyclefiles(stopper, tgtdirectory):
                 if not app.depthlocked and not app.tempdepthlock:
                     thresh = app.threshold.get() * app.scalemultiplier
                     app.tempdepthlock = True
-                # try:
-                results = genstats(imagedata, thresh, app.clusteron.get(), file)
-                app.datawriter(file, results)
-                # except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
-                #    app.logevent("Analysis failed, image may be corrupted")
+                try:
+                    results = genstats(imagedata, thresh, app.clusteron.get(), file)
+                    app.datawriter(file, results)
+                except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
+                    app.logevent("Analysis failed, image may be corrupted. Please report this!")
         else:
             app.progress_var.set(app.listlength)
             app.progress_text.set('Analysis Aborted')
