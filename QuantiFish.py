@@ -256,7 +256,7 @@ class CoreWindow:
         self.setminsizelabel.grid(column=3, row=1)
         self.setarea.grid(column=4, row=1, padx=(0, 5))
         self.clustersavecheck.grid(column=7, row=2, sticky=tk.W)
-        self.clusterfilenamebox.grid(column=8, row=2)
+        self.clusterfilenamebox.grid(column=8, row=2, pady=(0, 5))
         self.clusterextension.grid(column=9, row=2, sticky=tk.W, padx=(0, 10))
         self.fluorcheck.grid(column=7, row=1, columnspan=3, sticky=tk.W)
         self.spatialcheck.grid(column=1, row=2, padx=(10, 5), sticky=tk.W)
@@ -482,6 +482,7 @@ class CoreWindow:
             self.clusterfilenamebox.state(['disabled'])
         self.firstrun = True
 
+    # Detect Fluor50 status and note save format change
     def fluorstatus(self):
         if self.wantfluor50.get():
             self.logevent("Individual cluster data will be sorted by size to determine Fluor50.")
@@ -489,6 +490,7 @@ class CoreWindow:
             self.logevent("Cluster data will no longer be sorted.")
         self.firstrun = True
 
+    # Detect spatial analysis status, note save format change and setup widgets
     def spatialstatus(self):
         if self.wantspatial.get():
             self.logevent("Spatial distribution analysis will be performed.")
@@ -499,6 +501,7 @@ class CoreWindow:
             self.setboxsize.state(['disabled'])
         self.firstrun = True
 
+    # Detect if user wants to save cluster data. Toggle name box.
     def singleclusterstatus(self):
         if self.clustersave.get():
             self.logevent("Data for each cluster will be saved in a seperate file.")
@@ -725,6 +728,7 @@ class CoreWindow:
         except (OSError, PermissionError, IOError):
             self.logevent("Unable to write to save file, please make sure it isn't open in another program!")
 
+    # Writes headers needed in cluster analysis file
     def clusterheaders(self):
         headings = (
             'File', 'Cluster ID', 'Cluster Location', 'Cluster Area', 'Maximum Intensity', 'Minimum Intensity',
@@ -1066,6 +1070,7 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     return returnpack
 
 
+# Determine Fluor50 - clusters needed for 50% of all staining
 def getfluor50(cumpercentlist):
     cumpercentlist = np.insert(cumpercentlist, 0, 0)  # Insert a point at 0
     ids = np.arange(0, len(cumpercentlist))
@@ -1074,26 +1079,26 @@ def getfluor50(cumpercentlist):
     return fluor50val
 
 
+# Determine spatial measurements. Grid test, polygon area, max icd.
 def runspatialanalysis(pointlist, imageshape):
     ydim, xdim = imageshape
     coordmap = mapcoords(pointlist, xdim, ydim)
     positivegrid, totalgrid = gridtest(coordmap, xdim, ydim)
     if len(pointlist) > 2:
         chullarea, icdmax = findconvexhull(pointlist)
-    elif len(pointlist) == 2:
+    elif len(pointlist) == 2:  # Can't make polygon from 2 points.
         chullarea = 0
         testpts = np.array(pointlist)
         icdmax = distance.euclidean(testpts[0], testpts[1])
-    else:
+    else:  # Not enough points for distance calculations
         chullarea = 0
         icdmax = 0
-    # TODO: This should compensate for 2 points only
     resultspack = (totalgrid, positivegrid, chullarea, icdmax)
     return resultspack
 
 
+# Generate blank array same shape as original image and map the cluster centroids onto it
 def mapcoords(inputlist, xdim, ydim):
-    # Generate blank array same shape as original image
     blankimage = np.zeros((ydim, xdim), dtype=bool)
     for coord in inputlist:
         y, x = coord
@@ -1101,6 +1106,7 @@ def mapcoords(inputlist, xdim, ydim):
     return blankimage
 
 
+# Divide the image into boxes and check for clusters within each
 def gridtest(inputarray, imxdim, imydim):
     positivecount = 0
     totalcount = 0
@@ -1120,6 +1126,7 @@ def gridtest(inputarray, imxdim, imydim):
     return positivecount, totalcount
 
 
+# Generate a convex hull (polygon containing all coordinates)
 def findconvexhull(coords):
     # Add coords to array
     coordarray = np.array(coords)
@@ -1128,14 +1135,13 @@ def findconvexhull(coords):
         arearesult = hull.area
         # Restrict test points to those around the hull to minimise work.
         candidates = coordarray[hull.vertices]
-        dist_mat = distance_matrix(candidates, candidates)
-        i, j = np.unravel_index(dist_mat.argmax(), dist_mat.shape)
-        maxdist = distance.euclidean(candidates[i], candidates[j])
     except (qhull.QhullError, ValueError):
-        # Just in case staining forms a perfectly straight 2d line (area of 0)
+        # Can't restrict maxdist candidates if hull drawing fails (usually if stain is 1d)
         arearesult = 0
-        maxdist = 0
-        # TODO: brute force maxdist if hull fails
+        candidates = coordarray
+    dist_mat = distance_matrix(candidates, candidates)
+    i, j = np.unravel_index(dist_mat.argmax(), dist_mat.shape)
+    maxdist = distance.euclidean(candidates[i], candidates[j])
     return arearesult, maxdist
 
 
@@ -1151,6 +1157,7 @@ def savepreview():
         app.logevent("Unable to save file, is this location valid?")
 
 
+# Previewer Window
 class PreviewWindow:
     def __init__(self, master):
         self.master = master
@@ -1345,6 +1352,7 @@ class AboutWindow:
         self.aboutwindow.pack()
 
 
+# File List Window
 class FileListWindow:
     # Simple file list window frame
     def __init__(self, master):
