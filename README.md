@@ -2,19 +2,20 @@
 
   QuantiFish is a quantification program intended for measuring fluorescence in images of zebrafish, although use with images of other specimens is possible. To perform an analysis, specify the folder containing your images of interest, select which analysis settings you want, then choose a file to save the data to. When these parameters are set the “Run” button in the bottom right will become available to allow you to start the analysis.
   
-  ![Main Window](https://i.imgur.com/IY0PXlO.png "Main Window")
+  ![Main Window](https://i.imgur.com/BKSDOSM.png "Main Window")
 
 
 ## [Available for Download Here](https://github.com/DavidStirling/QuantiFish/releases/)
 
 
-##  What's New in 2.0?
-  QuantiFish 2.0 brings various enhancements:
-  - Redesigned interface
-  - Improved file handling 
-  - Simplified setup and configuration
-  - Support for very large images
-  - Ability to export data for each region of staining within an image
+##  What's New in 2.1?
+  QuantiFish 2.1 introduces new measurements to analyse distribution of staining:
+  - Fluor50 - Number of foci responsible for 50% of total staining. Provides insight into the distribution of staining between individual clusters.
+  - Grid Analysis - Images are divided into zones of a defined size. Zones containing foci are counted as possible. Measures spatial distribution while minimising the influence of groups of foci in close proximity.
+  - Polygon Area - Area of the smallest possible polygon which contains all foci. Informs on 2D spatial distribution.
+  - ICDmax - Maximum inter-cluster distance, being the distance between the two furthest objects.
+  
+  **See below for more information!**
   
   See the [full changelog](https://github.com/DavidStirling/QuantiFish/blob/master/ChangeLog.txt) for more!
   
@@ -27,7 +28,7 @@
 
 
 ##  Compatibility
-  This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. For other operating systems you can run the script from the source code (freely available on GitHub). This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image and PIL libraries. Standalone Windows and Mac releases are bundled all dependencies to simplify installation.
+  This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. For other operating systems you can run the script from the source code (freely available on GitHub). This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image and PIL libraries. Standalone Windows and Mac releases are bundled with all dependencies to simplify installation.
 
 
 ## Accepted Images
@@ -63,14 +64,37 @@
 
 When enabled, only pixels above the specified threshold will be counted as positive. Use this to remove autofluorescence. See the *Preview* function for more information.
 
-### Cluster Analysis
+### Dissemination Analysis
 
-**Analyse Clustering** - When enabled, the software will search for large areas of staining and perform additional analysis on these areas.
+**Analyse Clustering** - When enabled, the software will search for continuous areas of staining and perform additional analysis on these areas.
 
-**Minimum Size** - Specifies the minimum size that an area of staining must be to be considered as a cluster.
+**Minimum Size** - Specifies the minimum area that a region of staining must be to be considered as a cluster.
+
+**Calculate Fluor50** - When enabled, data for clusters will be sorted by size (largest to smallest). From this the number of clusters responsible for 50% of staining will be calculated. Cumulative results are also included in the cluster output if saving is enabled below.
+
+**Spatial Analysis** - Turning this on will analyse for spatial distribution, performing grid analysis, polygon area and ICDmax measurments.
+
+**Box Size** - Grid analysis divides the image up into boxes of the size specified here. At the default 50, each image will be split into 50x50 squares and squares containing a cluster will be counted as positive.
 
 **Save Cluster Data** - When enabled, the intensity and size data for each individual cluster within an image will be recorded in a second output file, specified under this option.
 
+####  Spatial Measures
+
+**Stain Polygon Area** - Draws a polygon around all staining using the minimum possible vertices, like a rubber band. Good for evaluating how far staining has disseminated.
+
+  ![Stain Polygon Area](https://i.imgur.com/OHOklDk.jpg "Stain Polygon Area")
+
+**Cluster Polygon Area** - Similar to the stain polygon, but using the midpoints of clusters. Only clusters larger than the minimum size will be used. Useful when areas of staining are irregularly shaped or when the area of an individual object would be very large by itself.
+
+  ![Cluster Polygon Area](https://i.imgur.com/wsKFX60.jpg "Cluster Polygon Area")
+
+**ICDmax** - Distance between the two furthest clusters.
+
+  ![ICDmax](https://i.imgur.com/W0rv23Y.jpg "ICDmax")
+
+**Grid Analysis** - Image is divided into boxes (of the specified size) and boxes containing midpoints of clusters are considered positive. Useful for examining dissemination when objects may be packed closely together. 
+
+  ![Grid Analysis](https://i.imgur.com/A6dIWRA.jpg "Grid Analysis")
 
 ###  File Output
 
@@ -99,34 +123,56 @@ The **Pixel Value** box displays the intensity of the pixel which is currently u
  
  
 ###  Exported Data
- 
-Data per image contains the following statistics:
-1.	File – the name and directory of the image being analysed
-2.	Integrated Intensity – The sum of the positive pixels in the image, also equal to the average brightness of the stain multiplied by the stained area. This is your overall measure of fluorescence.
-3.	Positive Pixels – The total number of pixels which were considered positive (above the threshold). This represents the stained area.
-4.	Minimum – The lowest pixel value in the image.
-5.	Maximum – The highest pixel value in the image.
-6.	Displayed Threshold – The threshold specified on the scale by the user.
-7.  Computed Threshold - The final value of the threshold after being adjusted for image bit depth. Pixels below this number were ignored. This is used to remove background.
-8.	Channel – The colour of the image being analysed.
 
-Additional data types when using cluster detection mode:
+Some columns may or may not be present in the output file depending on the analysis settings used.
 
-8.  Clusters – Areas of continuous fluorescence above the detection threshold. 
-9.  Peaks – Individual points of high fluorescence. For the detection of multiple fluorescent objects in close proximity. A single cluster can be made up of multiple peaks.
+#### Output File Contents
+
+Data contained in output.csv (default name).
+
+Column Name | Description \[Option]
+------------ | -------------
+File | The full path and name of the file analysed
+Integrated Intensity | The sum of the positive pixels in the image, also equal to the average brightness of the stain multiplied by the stained area. This is your overall measure of fluorescence.
+Positive Pixels | The total number of pixels which were considered positive (above the threshold). This represents the stained area.
+Maximum | The highest pixel value in the image.
+Minimum | The lowest pixel value in the image.
+Stain Polygon | The area of a polygon containing all staining within the image using a minimum number of vertices. Similar to stretching a rubber band around the stained areas. Also known as a Convex Hull.
+Total Clusters | Areas of continuous fluorescence above the detection threshold. \[Analyse Clustering]
+Peaks | Individual points of high fluorescence, usually indicating the midpoint of a fluorescent object. A single cluster can be made up of multiple peaks when objects are in close proximity. \[Analyse Clustering]
+Large Clusters | Number of clusters bigger than the size threshold set by the user. Termed "large clusters". \[Analyse Clustering]
+Peaks in Large Clusters | Number of peaks in clusters larger than the minimum size. \[Analyse Clustering]
+Integrated Intensity in Large Clusters | Sum of all staining within large clusters. \[Analyse Clustering]
+Positive Pixels in Large Clusters | Number of positive pixels within large clusters. \[Analyse Clustering]
+Fluor50 | Minimum number of clusters responsible for 50% of all staining in large clusters. \[Calculate Fluor50]
+Total Grid Boxes | Number of boxes an image was divided into during grid analysis. \[Spatial Analysis]
+Positive Grid Boxes | Number of grid boxes which contained the midpoint of a cluster of staining. \[Spatial Analysis]
+Cluster Polygon Area | The area of a polygon containing all cluster midpoints within the image using a minimum number of vertices. \[Spatial Analysis]
+ICDmax | Maximum Inter-Cluster Distance. The distance between the two clusters which are furthest apart. \[Spatial Analysis]
+Displayed Threshold | The threshold specified on the scale by the user.
+Computed Threshold | The final value of the threshold after being adjusted for image bit depth. Pixels below this number were ignored. This is used to remove background.
+Channel | The colour of the image being analysed.
 
   The results file should be locked for editing while the program is open, so please don’t try to modify it while the analysis is running. Multiple runs during the same session will be logged to the same file, although if you close the program and re-open it the program will clear pre-existing data should you try to select the same file.
 
-When using **Save Cluster Data** mode, the following data per cluster is saved:
 
-1.  File - The file path which the cluster belongs to.
-2.  Cluster ID - The number of the cluster in the image.
-3.  Cluster Location - Co-ordinates of the cluster's position in the image.
-4.	Cluster Area - The number of pixels in the cluster.
-5.	Maximum Intensity - The highest value within the cluster.
-6.  Minimum Intensity - The lowest value within the cluster.
-7.  Average Intensity - The mean value within the cluster.
-8.  Integrated Intensity - The total intensity within the cluster.
+#### Clusters File Contents
+
+When using **Save Cluster Data** mode, the following data per cluster can be saved in clusters.csv (default name). If using a size threshold only data for clusters larger than or equal to that size will be recorded:
+
+Column Name | Description \[Option]
+------------ | -------------
+File | The full path and name of the file containing the cluster.
+Cluster ID | The number of the cluster in the image.
+Cluster Location | Co-ordinates of the cluster's position in the image. In the format (Y, X)
+Cluster Area | The number of pixels in the cluster.
+Maximum Intensity | The highest value within the cluster.
+Minimum Intensity | The lowest value within the cluster.
+Average Intensity | The mean value within the cluster.
+Integrated Intensity | The total intensity within the cluster.
+Percent Intensity | The percent of all staining in the image contributed by the cluster. \[Calculate Fluor50]
+Cumulative Intensity | Cumulative intensity of clusters in the image. \[Calculate Fluor50]
+Cumulative Percent Intensity | Cumulative percentage of all staining in the image. \[Calculate Fluor50]
 
  - - - -
 
