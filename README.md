@@ -11,7 +11,7 @@
 ##  What's New in 2.1?
   QuantiFish 2.1 introduces new measurements to analyse distribution of staining:
   - Fluor50 - Number of foci responsible for 50% of total staining. Provides insight into the distribution of staining between individual clusters.
-  - Grid Analysis - Images are divided into zones of a defined size. Zones containing foci are counted as possible. Measures spatial distribution while minimising the influence of groups of foci in close proximity.
+  - Grid Analysis - Images are divided into zones of a defined size. Zones containing foci are counted as positive. Measures spatial distribution while minimising the influence of groups of foci in close proximity.
   - Polygon Area - Area of the smallest possible polygon which contains all foci. Informs on 2D spatial distribution.
   - ICDmax - Maximum inter-cluster distance, being the distance between the two furthest objects.
   
