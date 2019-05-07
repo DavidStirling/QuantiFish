@@ -37,3 +37,7 @@ Version 2.1 - 07/04/2019
 - Calculate area of a polygon containing all staining or clusters.
 - Calculate furthest distance between two clusters of staining (ICDmax).
 - Divide image into boxes of specified size and determine how many contain clusters.
+
+Version 2.1.1 - 07/05/2019
+- Rename "Clusters" to "Foci".
+- Fix error with grid analysis when trying to use box sizes larger than the image.

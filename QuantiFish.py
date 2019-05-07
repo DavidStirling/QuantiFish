@@ -32,7 +32,7 @@ from skimage.feature import peak_local_max
 from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
-version = "2.1"
+version = "2.1.1"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -214,7 +214,7 @@ class CoreWindow:
         self.clustersave = tk.BooleanVar()
         self.clustersave.set(False)
         self.clusfilename = tk.StringVar()
-        self.clusfilename.set('clusters')
+        self.clusfilename.set('foci')
         self.wantfluor50 = tk.BooleanVar()
         self.wantfluor50.set(False)
         self.wantspatial = tk.BooleanVar()
@@ -222,7 +222,7 @@ class CoreWindow:
         self.gridboxsize = tk.IntVar()
         self.gridboxsize.set(50)
         self.clusterbox = ttk.LabelFrame(self.corewrapper, relief=tk.GROOVE, text="Dissemination Analysis")
-        self.cluscheck = ttk.Checkbutton(self.clusterbox, text="Analyse Clustering",
+        self.cluscheck = ttk.Checkbutton(self.clusterbox, text="Analyse Foci",
                                          variable=self.clusteron,
                                          onvalue=True, offvalue=False, command=self.cluststatus)
         self.setminsizelabel = ttk.Label(self.clusterbox, text="Minimum Size:")
@@ -239,10 +239,10 @@ class CoreWindow:
         self.setboxsize = ttk.Entry(self.clusterbox, textvariable=self.gridboxsize, validate='focusout',
                                     validatecommand=self.boxsizevalidate, width=5, justify=tk.CENTER)
 
-        self.clustersavecheck = ttk.Checkbutton(self.clusterbox, text="Save cluster data:",
+        self.clustersavecheck = ttk.Checkbutton(self.clusterbox, text="Save foci data:",
                                                 variable=self.clustersave,
                                                 onvalue=True, offvalue=False, command=self.singleclusterstatus)
-        self.clusnamevalidate = (self.clusterbox.register(self.validate_text), '%P', 'cluster')
+        self.clusnamevalidate = (self.clusterbox.register(self.validate_text), '%P', 'foci')
         self.clusterfilenamebox = ttk.Entry(self.clusterbox, textvariable=self.clusfilename, validate='focusout',
                                             validatecommand=self.clusnamevalidate, width=8, justify=tk.CENTER)
         self.clusterextension = ttk.Label(self.clusterbox, text=".csv")
@@ -252,7 +252,7 @@ class CoreWindow:
         self.fluorcheck.state(['disabled'])
         self.spatialcheck.state(['disabled'])
         self.setboxsize.state(['disabled'])
-        self.cluscheck.grid(column=1, row=1, padx=(10, 5))
+        self.cluscheck.grid(column=1, row=1, padx=(10, 5), sticky=tk.W)
         self.setminsizelabel.grid(column=3, row=1)
         self.setarea.grid(column=4, row=1, padx=(0, 5))
         self.clustersavecheck.grid(column=7, row=2, sticky=tk.W)
@@ -460,7 +460,7 @@ class CoreWindow:
     # Detect clustering status and disable widgets if it's off.
     def cluststatus(self):
         if self.clusteron.get():
-            self.logevent("Cluster Analysis Enabled")
+            self.logevent("Foci Analysis Enabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.setarea.state(['!disabled'])
             self.fluorcheck.state(['!disabled'])
@@ -472,7 +472,7 @@ class CoreWindow:
                 self.clusterfilenamebox.state(['!disabled'])
             self.minarea.set(1)
         else:
-            self.logevent("Cluster Analysis Disabled")
+            self.logevent("Foci Analysis Disabled")
             self.logevent("WARNING: Logging format changed. Any data already in the output file will be lost.")
             self.setarea.state(['disabled'])
             self.fluorcheck.state(['disabled'])
@@ -485,9 +485,9 @@ class CoreWindow:
     # Detect Fluor50 status and note save format change
     def fluorstatus(self):
         if self.wantfluor50.get():
-            self.logevent("Individual cluster data will be sorted by size to determine Fluor50.")
+            self.logevent("Individual focus data will be sorted by size to determine Fluor50.")
         else:
-            self.logevent("Cluster data will no longer be sorted.")
+            self.logevent("Foci data will no longer be sorted.")
         self.firstrun = True
 
     # Detect spatial analysis status, note save format change and setup widgets
@@ -504,11 +504,11 @@ class CoreWindow:
     # Detect if user wants to save cluster data. Toggle name box.
     def singleclusterstatus(self):
         if self.clustersave.get():
-            self.logevent("Data for each cluster will be saved in a seperate file.")
+            self.logevent("Data for each focus will be saved in a seperate file.")
             self.clusterfilenamebox.state(['!disabled'])
-            self.clusfilename.set('clusters')
+            self.clusfilename.set('foci')
         else:
-            self.logevent("Only cluster summary data per fish will be saved.")
+            self.logevent("Only foci summary data per fish will be saved.")
             self.clusterfilenamebox.state(['disabled'])
         self.firstrun = True
 
@@ -700,12 +700,12 @@ class CoreWindow:
     def headers(self):
         headings = ('File', 'Integrated Intensity', 'Positive Pixels', 'Maximum', 'Minimum', 'Stain Polygon Area')
         if self.clusteron.get():
-            headings += ('Total Clusters', 'Total Peaks', 'Large Clusters', 'Peaks in Large Clusters',
-                         'Integrated Intensity in Large Clusters', 'Positive Pixels in Large Clusters')
+            headings += ('Total Foci', 'Total Peaks', 'Large Foci', 'Peaks in Large Foci',
+                         'Integrated Intensity in Large Foci', 'Positive Pixels in Large Foci')
             if app.wantfluor50.get():
                 headings += ('Fluor50',)
             if app.wantspatial.get():
-                headings += ('Total Grid Boxes', 'Positive Grid Boxes', 'Cluster Polygon Area', 'ICDmax')
+                headings += ('Total Grid Boxes', 'Positive Grid Boxes', 'Focus Polygon Area', 'IFDmax')
         headings += ('Displayed Threshold', 'Computed Threshold', 'Channel')
         savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
         if os.path.isfile(savefile):
@@ -731,18 +731,18 @@ class CoreWindow:
     # Writes headers needed in cluster analysis file
     def clusterheaders(self):
         headings = (
-            'File', 'Cluster ID', 'Cluster Location', 'Cluster Area', 'Maximum Intensity', 'Minimum Intensity',
+            'File', 'Focus ID', 'Focus Location', 'Focus Area', 'Maximum Intensity', 'Minimum Intensity',
             'Average Intensity', 'Integrated Intensity')
         if app.wantfluor50.get():
             headings += ('Percent Intensity', 'Cumulative Intensity', 'Cumulative Percent Intensity')
         savefile = self.savedir.get() + '/' + self.clusfilename.get() + '.csv'
         if os.path.isfile(savefile):
             if not messagebox.askokcancel("File Already Exists",
-                                          "The save file for clusters already exists, is it ok to overwrite it?"):
+                                          "The save file for foci already exists, is it ok to overwrite it?"):
                 return False
         with open(savefile, 'w', newline="\n", encoding="utf-8") as f:
             writer(f).writerow(headings)
-            self.logevent("Single cluster output file created successfully")
+            self.logevent("Single focus output file created successfully")
         return True
 
     # Exports data to csv file
@@ -1085,15 +1085,15 @@ def runspatialanalysis(pointlist, imageshape):
     coordmap = mapcoords(pointlist, xdim, ydim)
     positivegrid, totalgrid = gridtest(coordmap, xdim, ydim)
     if len(pointlist) > 2:
-        chullarea, icdmax = findconvexhull(pointlist)
+        chullarea, ifdmax = findconvexhull(pointlist)
     elif len(pointlist) == 2:  # Can't make polygon from 2 points.
         chullarea = 0
         testpts = np.array(pointlist)
-        icdmax = distance.euclidean(testpts[0], testpts[1])
+        ifdmax = distance.euclidean(testpts[0], testpts[1])
     else:  # Not enough points for distance calculations
         chullarea = 0
-        icdmax = 0
-    resultspack = (totalgrid, positivegrid, chullarea, icdmax)
+        ifdmax = 0
+    resultspack = (totalgrid, positivegrid, chullarea, ifdmax)
     return resultspack
 
 
@@ -1112,6 +1112,10 @@ def gridtest(inputarray, imxdim, imydim):
     totalcount = 0
     splitfactory = int(imydim / app.gridboxsize.get())
     splitfactorx = int(imxdim / app.gridboxsize.get())
+    if splitfactory < 1:
+        splitfactory = 1
+    if splitfactorx < 1:
+        splitfactorx = 1
     arraylist = np.array_split(inputarray, splitfactory, 0)
     arraycatcher = []
     for array in arraylist:
@@ -1188,7 +1192,7 @@ class PreviewWindow:
         self.overlaytoggle = ttk.Button(self.previewcontrols, style='preview.TButton', text="Show\nOverlay",
                                         command=lambda: self.switchpreview(False))
         self.overlaytoggle.state(['pressed'])
-        self.clustertoggle = ttk.Button(self.previewcontrols, style='preview.TButton', text="Find\nClusters",
+        self.clustertoggle = ttk.Button(self.previewcontrols, style='preview.TButton', text="Find\nFoci",
                                         command=lambda: self.switchpreview(True))
         self.overlaysave = ttk.Button(self.previewcontrols, style='preview.TButton', text="Save\nOverlay",
                                       command=savepreview)
