@@ -76,6 +76,8 @@ When enabled, only pixels above the specified threshold will be counted as posit
 
 **Box Size** - Grid analysis divides the image up into boxes of the size specified here. At the default 50, each image will be split into 50x50 squares and squares containing the midpoint of a focus will be counted as positive.
 
+N.B. When using excessively large box sizes, this algorithm will try to keep the boxes as evenly sized as possible. For example, trying to divide a 1000 pixel-wide image into boxes of 700 would create 2x 500 pixel-wide boxes rather than using 700 + 300.
+
 **Save Foci Data** - When enabled, the intensity and size data for each individual focus within an image will be recorded in a second output file, specified under this option.
 
 ###  Spatial Measures
