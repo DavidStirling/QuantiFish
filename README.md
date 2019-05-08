@@ -2,7 +2,7 @@
 
   QuantiFish is a quantification program intended for measuring fluorescence in images of zebrafish, although use with images of other specimens is possible. To perform an analysis, specify the folder containing your images of interest, select which analysis settings you want, then choose a file to save the data to. When these parameters are set the “Run” button in the bottom right will become available to allow you to start the analysis.
   
-  ![Main Window](https://i.imgur.com/BKSDOSM.png "Main Window")
+  ![Main Window](https://i.imgur.com/AXlTMdT.png "Main Window")
 
 
 ## [Available for Download Here](https://github.com/DavidStirling/QuantiFish/releases/)
