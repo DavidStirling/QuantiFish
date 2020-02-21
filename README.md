@@ -22,7 +22,7 @@
 ##  Referencing
  Citations can be made by referencing [this manuscript](https://www.nature.com/articles/s41598-020-59932-1):
  
-> Stirling, D.R., Suleyman, O., Gil, E. et al. Analysis tools to quantify dissemination of pathology in zebrafish larvae. *Sci Rep* **10**, 3149 (2020).
+Stirling, D.R., Suleyman, O., Gil, E. et al. Analysis tools to quantify dissemination of pathology in zebrafish larvae. *Sci Rep* **10**, 3149 (2020).
 
 [![DOILink](https://img.shields.io/badge/DOI-10.1038%2Fs41598--020--59932--1-blue)](https://doi.org/10.1038/s41598-020-59932-1)
  
