@@ -20,12 +20,12 @@
   See the [full changelog](https://github.com/DavidStirling/QuantiFish/blob/master/ChangeLog.txt) for more!
   
 ##  Referencing
- Citations can be made using the following DOI:
+ Citations can be made by referencing [this manuscript](https://www.nature.com/articles/s41598-020-59932-1):
  
- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1298429.svg)](https://doi.org/10.5281/zenodo.1298429)
- 
- Full manuscript coming soon!
+> Stirling, D.R., Suleyman, O., Gil, E. et al. Analysis tools to quantify dissemination of pathology in zebrafish larvae. *Sci Rep* **10**, 3149 (2020).
 
+[![DOILink](https://img.shields.io/badge/DOI-10.1038%2Fs41598--020--59932--1-blue)](https://doi.org/10.1038/s41598-020-59932-1)
+ 
 
 ##  Compatibility
   This program is supported on **Windows 7** or newer and **Mac OS X 10.12 “Sierra”** or newer. For other operating systems you can run the script from the source code (freely available on GitHub). This software was written in Python 3. Key dependencies are the NumPy, SciPy, Scikit-Image and PIL libraries. Standalone Windows and Mac releases are bundled with all dependencies to simplify installation.
