@@ -11,20 +11,25 @@ jobs:
         os: [ macos-13, windows-latest ]
         include:
           - os: macos-13
-            release_args: --onedir, --icon resources/QFIcon.icns
+            release_args: --onedir --icon resources/QFIcon.icns
             package_name: macos-binary
           - os: windows-latest
-            release_args: --onefile, --icon resources/QFIcon.ico
+            release_args: --onefile --icon resources/QFIcon.ico
             package_name: windows-binary
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Create Executable
-        uses: sayyid5416/pyinstaller@v1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python_ver: '3.6'
-          spec: 'QuantiFish.py'
-          requirements: './requirements.txt'
-          options: --name "QuantiFish", --windowed, --add-data resources:resources, ${{ matrix.release_args }}
+          python-version: '3.10'
+      - name: Build package
+        run: |
+          git fetch --prune --unshallow --tags --force
+          python -m pip install setuptools wheel
+          cd ./QuantiFish
+          python -m pip install pyinstaller
+      - name: Create Executable
+        run: pyinstaller QuantiFish.py --noconfirm --name "QuantiFish" --windowed --add-data resources:resources ${{ matrix.release_args }}
       - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:
