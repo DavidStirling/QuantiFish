@@ -11,10 +11,10 @@ jobs:
         os: [ macos-13, windows-latest ]
         include:
           - os: macos-13
-            release_args: --onedir --icon resources/QFIcon.icns
+            spec: build_macos.spec
             package_name: macos-binary
           - os: windows-latest
-            release_args: --onefile --icon resources/QFIcon.ico
+            spec: build_windows.spec
             package_name: windows-binary
     runs-on: ${{ matrix.os }}
     steps:
@@ -28,7 +28,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip list
       - name: Create Executable
-        run: pyinstaller QuantiFish.py --noconfirm --windowed --add-data resources:resources ${{ matrix.release_args }}
+        run: pyinstaller ${{ matrix.spec }}}
       - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:
