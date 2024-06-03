@@ -11,10 +11,8 @@ jobs:
         os: [ macos-13, windows-latest ]
         include:
           - os: macos-13
-            spec: build_macos.spec
             package_name: macos-binary
           - os: windows-latest
-            spec: build_windows.spec
             package_name: windows-binary
     runs-on: ${{ matrix.os }}
     steps:
@@ -25,11 +23,19 @@ jobs:
           cache: 'pip'
       - name: Install deps
         run: |
-          python -m pip install setuptools wheel pyinstaller
-          python -m pip install -r requirements.txt
+          python -m pip install setuptools wheel
+          python -m pip install .
           python -m pip list
-      - name: Create Executable
-        run: pyinstaller ${{ matrix.spec }}
+      - name: Windows Build
+        if: matrix.os == 'windows-latest'
+        run: |
+          pip install pyinstaller
+          pyinstaller build_windows.spec
+      - name: MacOs Build
+        if: matrix.os == 'macos-13'
+        run: |
+          pip install py2app
+          python setup.py py2app
       - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:
