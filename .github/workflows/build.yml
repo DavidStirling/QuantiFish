@@ -22,15 +22,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
       - name: Install deps
         run: |
           python -m pip install setuptools wheel pyinstaller
           python -m pip install -r requirements.txt
           python -m pip list
       - name: Create Executable
-        run: |
-          ls
-          pyinstaller ${{ matrix.spec }}
+        run: pyinstaller ${{ matrix.spec }}
       - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:

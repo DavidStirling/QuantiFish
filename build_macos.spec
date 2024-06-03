@@ -46,5 +46,9 @@ app = BUNDLE(
     coll,
     name='QuantiFish.app',
     icon='resources/QFIcon.icns',
-    bundle_identifier=None,
+    bundle_identifier="com.davidstirling.quantifish",
+    info_plist={
+        'CFBundleShortVersionString': '2.1.2',
+        'NSPrincipalClass': 'NSApplication',
+    },
 )
