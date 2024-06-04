@@ -46,9 +46,8 @@ jobs:
       - name: Create release
         if: startsWith(github.ref, 'refs/tags')
         uses: softprops/action-gh-release@v1
-        working-directory: ./dist
         with:
           files: |
-            *.exe
-            *.app
+            ./dist/*.exe
+            ./dist/*.app
           draft: true
