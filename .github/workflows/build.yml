@@ -31,7 +31,7 @@ jobs:
       - name: Create Executable
         run: pyinstaller ${{ matrix.spec }}
       - name: Compress Executable
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'macos-13'
         run: |
           mkdir tar
           tar -zcvf --remove-files dist/QuantiFish.tar.gz dist/QuantiFish.app
