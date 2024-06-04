@@ -32,29 +32,23 @@ jobs:
         run: pyinstaller ${{ matrix.spec }}
       - name: Compress Executable
         if: matrix.os == 'macos-13'
+        working-directory: ./dist
         run: |
-          mkdir tar
-          tar -zcvf dist/QuantiFish.tar.gz dist/QuantiFish.app
-          rm -rf dist/QuantiFish.app
+          tar -zcvf QuantiFish.tar.gz QuantiFish.app
       - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.package_name }}
-          path: dist/QuantiFish.*
+          path: |
+            dist/QuantiFish.exe
+            dist/QuantiFish.tar.gz
           retention-days: 30
-  publish-pypi:
-    name: Pypi
-    if: startsWith(github.ref, 'refs/tags')
-    needs:
-      - build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create release draft
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags')
         uses: softprops/action-gh-release@v1
+        working-directory: ./dist
         with:
           files: |
-            windows-binary/*.exe
-            macos-binary/*.tar.gz
+            *.exe
+            *.app
           draft: true
-          fail_on_unmatched_files: true
