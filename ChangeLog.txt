@@ -41,3 +41,7 @@ Version 2.1 - 07/04/2019
 Version 2.1.1 - 07/05/2019
 - Rename "Clusters" to "Foci".
 - Fix error with grid analysis when trying to use box sizes larger than the image.
+
+Version 2.1.2 - 04/06/2024
+- Support modern windows/macos versions.
+- Proper build system with GH actions.

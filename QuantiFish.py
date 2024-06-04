@@ -1359,9 +1359,9 @@ class AboutWindow:
         self.heading.pack()
         self.line2 = tk.Label(self.aboutwindow, text="Version " + version, font=("Consolas", 10), justify=tk.CENTER)
         self.line2.pack(pady=(0, 5))
-        self.line3 = tk.Label(self.aboutwindow, text="David Stirling, 2017-2019", font=("Arial", 10), justify=tk.CENTER)
+        self.line3 = tk.Label(self.aboutwindow, text="David Stirling, 2017-2024", font=("Arial", 10), justify=tk.CENTER)
         self.line3.pack()
-        self.line4 = tk.Label(self.aboutwindow, text="@DavidRStirling", font=("Arial", 10), justify=tk.CENTER)
+        self.line4 = tk.Label(self.aboutwindow, text="github.com/DavidStirling", font=("Arial", 10), justify=tk.CENTER)
         self.line4.pack(pady=(0, 5))
         self.aboutwindow.pack()
 
