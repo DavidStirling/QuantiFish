@@ -1,0 +1,53 @@
+name: Build
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        os: [ macos-13, windows-latest ]
+        include:
+          - os: macos-13
+            spec: build_macos.spec
+            package_name: macos-binary
+          - os: windows-latest
+            spec: build_windows.spec
+            package_name: windows-binary
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install deps
+        run: |
+          python -m pip install setuptools wheel pyinstaller
+          python -m pip install -r requirements.txt
+          python -m pip list
+      - name: Create Executable
+        run: pyinstaller ${{ matrix.spec }}
+      - name: Compress Executable
+        if: matrix.os == 'macos-13'
+        working-directory: ./dist
+        run: |
+          tar -zcvf QuantiFish.tar.gz QuantiFish.app
+      - name: Artifact upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package_name }}
+          path: |
+            dist/QuantiFish.exe
+            dist/QuantiFish.tar.gz
+          retention-days: 30
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./dist/*.exe
+            ./dist/*.app
+          draft: true

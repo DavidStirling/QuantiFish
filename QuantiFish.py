@@ -1,5 +1,5 @@
 # QuantiFish - A tool for quantification of fluorescence in Zebrafish embryos.
-# Copyright(C) 2017-2019 David Stirling
+# Copyright(C) 2017-2024 David Stirling
 
 """This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ from skimage.feature import peak_local_max
 from skimage.measure import regionprops, label
 from skimage.transform import rescale
 
-version = "2.1.1"
+version = "2.1.2"
 
 
 # Get path for unpacked Pyinstaller exe (MEIPASS), else default to current directory.
@@ -112,10 +112,13 @@ class CoreWindow:
         # Header Bar
         self.img = ImageTk.PhotoImage(Image.open(resource_path("resources/QFLogo")))
         self.logo = ttk.Label(self.header, image=self.img)
-        self.title = ttk.Label(self.header, text="QuantiFish ", font=("Arial", 25),
-                               justify=tk.CENTER).grid(column=2, columnspan=1, row=1, sticky=tk.E + tk.W)
-        self.subtitle = ttk.Label(self.header, text="Zebrafish Image Analyser", font=("Arial", 10),
-                                  justify=tk.CENTER).grid(column=2, columnspan=1, row=2, sticky=tk.E + tk.W)
+        ttk.Label(self.header, text="QuantiFish ", font=("Arial", 25),
+                  justify=tk.CENTER).grid(column=2, columnspan=1, row=1,
+                                          sticky=tk.E + tk.W)
+        ttk.Label(self.header, text="Zebrafish Image Analyser",
+                  font=("Arial", 10),
+                  justify=tk.CENTER).grid(column=2, columnspan=1, row=2,
+                                          sticky=tk.E + tk.W)
         self.about = ttk.Button(self.header, text="About", command=self.about)
         self.logo.grid(column=1, row=1, rowspan=2, sticky=tk.W)
         self.about.grid(column=4, row=1, rowspan=1, sticky=tk.E, padx=10, pady=5)
@@ -399,7 +402,8 @@ class CoreWindow:
 
         else:
             self.logevent("No image directory set, unable to generate file list.")
-            self.filelist_contents.filelistlabel.config(text="0 files to be analysed")
+            if self.filelist_contents:
+                self.filelist_contents.filelistlabel.config(text="0 files to be analysed")
 
     # Run file scan on another thread.
     def filelist_thread(self):
@@ -409,7 +413,7 @@ class CoreWindow:
             time.sleep(0.5)
         self.list_stopper.set()
         filegenthread = threading.Thread(target=self.preview_filelist, args=())
-        filegenthread.setDaemon(True)
+        filegenthread.daemon = True
         filegenthread.start()
 
     # Close file list window.
@@ -625,7 +629,7 @@ class CoreWindow:
             clusterim[clustermask] = (0, 75, 255)
             if clusterim.shape[1] > 750:
                 self.resizefactor = 750 / clusterim.shape[1]
-                clusterim = rescale(clusterim, self.resizefactor)
+                clusterim = rescale(clusterim, self.resizefactor, channel_axis=-1 if len(clusterim.shape) > 2 else None)
                 clusterim = (clusterim * 255).astype('uint8')
             return clusterim
 
@@ -642,7 +646,7 @@ class CoreWindow:
             # Reduce preview spawner to 8-bit range
             if imfile.shape[1] > 750:
                 self.resizefactor = 750 / im.shape[1]
-                self.imsml = rescale(im, self.resizefactor)
+                self.imsml = rescale(im, self.resizefactor, channel_axis=-1 if len(im.shape) > 2 else None)
                 self.imsml = (self.imsml * 255).astype('uint8')
             else:
                 self.imsml = im
@@ -719,8 +723,9 @@ class CoreWindow:
 
     # Exports data to csv file
     def datawriter(self, exportpath, exportdata):
-        writeme = (exportpath,) + exportdata + (self.threshold.get(), self.threshold.get() * app.scalemultiplier,
-                                                app.currentchannel)
+        writeme = [exportpath, *exportdata, self.threshold.get(),
+                   self.threshold.get() * app.scalemultiplier,
+                   app.currentchannel]
         try:
             savefile = self.savedir.get() + '/' + self.savefilename.get() + '.csv'
             with open(savefile, 'a', newline="\n", encoding="utf-8") as f:
@@ -778,7 +783,7 @@ class CoreWindow:
             mprokilla = threading.Event()
             mprokilla.set()
             mpro = threading.Thread(target=cyclefiles, args=(mprokilla, self.directory.get()))
-            mpro.setDaemon(True)
+            mpro.daemon = True
             mpro.start()
         except (AttributeError, ValueError, TypeError, OSError, PermissionError, IOError):
             app.logevent("Error initiating script, aborting")
@@ -812,7 +817,7 @@ class CoreWindow:
             self.runbutton.config(text="Run", command=app.runscript)
             self.locked = False
         else:
-            for widget in listwidgets + manualwidgets:
+            for widget in (*listwidgets, *manualwidgets):
                 widget.state(['disabled'])
             self.threslide.config(state=tk.DISABLED)
             self.runbutton.config(text="Stop", command=app.abort)
@@ -1017,7 +1022,9 @@ def genstats(inputimage, threshold, wantclusters, file):
 # Cluster Analysis
 def getclusters(trgtimg, threshold, minimumarea, file):
     # Find and count peaks above threshold, assign labels to clusters of stainng.
-    localmax = peak_local_max(trgtimg, indices=False, threshold_abs=threshold)
+    peaks = peak_local_max(trgtimg, threshold_abs=threshold)
+    localmax = np.zeros_like(trgtimg, dtype=bool)
+    localmax[tuple(peaks.T)] = True
     peaks, numpeaks = label(localmax, return_num=True)
     simpleclusters, numclusters = label(trgtimg > 0, return_num=True)
     # Create table of cluster ids vs size of each, then list clusters bigger than minsize
@@ -1031,7 +1038,10 @@ def getclusters(trgtimg, threshold, minimumarea, file):
     filthresholded[np.invert(clustermask)] = 0
     intintfil = np.sum(filthresholded)
     countfil = np.count_nonzero(filthresholded)
-    localmax2 = peak_local_max(filthresholded[:, :], indices=False, threshold_abs=threshold)
+    peaks2 = peak_local_max(filthresholded[:, :], threshold_abs=threshold)
+    localmax2 = np.zeros_like(filthresholded[:, :], dtype=bool)
+    localmax2[tuple(peaks2.T)] = True
+
     targetpeaks, numtargetpeaks = label(localmax2, return_num=True)
     cprops = regionprops(simpleclusters, trgtimg)  # Get stats for each cluster
     currentid = 0
@@ -1349,9 +1359,9 @@ class AboutWindow:
         self.heading.pack()
         self.line2 = tk.Label(self.aboutwindow, text="Version " + version, font=("Consolas", 10), justify=tk.CENTER)
         self.line2.pack(pady=(0, 5))
-        self.line3 = tk.Label(self.aboutwindow, text="David Stirling, 2017-2019", font=("Arial", 10), justify=tk.CENTER)
+        self.line3 = tk.Label(self.aboutwindow, text="David Stirling, 2017-2024", font=("Arial", 10), justify=tk.CENTER)
         self.line3.pack()
-        self.line4 = tk.Label(self.aboutwindow, text="@DavidRStirling", font=("Arial", 10), justify=tk.CENTER)
+        self.line4 = tk.Label(self.aboutwindow, text="github.com/DavidStirling", font=("Arial", 10), justify=tk.CENTER)
         self.line4.pack(pady=(0, 5))
         self.aboutwindow.pack()
 
